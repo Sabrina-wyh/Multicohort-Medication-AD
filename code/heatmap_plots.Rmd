@@ -1,0 +1,572 @@
+---
+title: "meta_plots"
+author: "Yihan Wang"
+date: "2025-09-16"
+output: word_document
+---
+
+```{r}
+rm(list=ls())
+set.seed(42)
+library(missRanger)
+library(ggplot2)
+library(tidyverse)
+library(viridis)
+library(pheatmap)
+library(rlang)
+```
+
+```{r}
+source("medication-lmer-utility.R")
+source("plots.R")
+```
+
+```{r}
+med_cols<-c("ACEi","ARB","BetaBlk","CCB","Diuretic","Statin","Metformin")
+```
+
+```{r}
+NACC_full_df_mmse_imputed<-read.csv("../preprocessed_data/NACC/NACC_mmse_imputed_binary.csv")
+AIBL_full_df_mmse_imputed<-read.csv("../preprocessed_data/AIBL/AIBL_mmse_imputed_binary.csv")
+HABS_full_df_mmse_imputed<-read.csv("../preprocessed_data/HABSHD/HABSHD_mmse_imputed_binary.csv")
+```
+
+################## MMSE Baseline medicaton#############
+```{r}
+AIBL_full_df_mmse_imputed_baseline <- make_participant_summary(
+  df            = AIBL_full_df_mmse_imputed,
+  id_col        = "id",
+  time_col      = "months_since_baseline",
+  visit_col     = "visit_no",   # or NULL if absent
+  dataset_col   = NULL,         # <- optional
+  value_col     = "MMSE",
+  out_col       = "dMMSE_per_year",
+  med_cols      = med_cols,
+  demo_cols     = c("age","sex","APOE4","status"),
+  collapse_mode = "baseline"
+)
+
+NACC_full_df_mmse_imputed_baseline <- make_participant_summary(
+  df            = NACC_full_df_mmse_imputed,
+  id_col        = "id",
+  time_col      = "months_since_baseline",
+  visit_col     = "visit_no",   # or NULL if absent
+  dataset_col   = NULL,         # <- optional
+  value_col     = "MMSE",
+  out_col       = "dMMSE_per_year",
+  med_cols      = med_cols,
+  demo_cols     = c("age","sex","APOE4","status"),
+  collapse_mode = "baseline"
+)
+
+HABS_full_df_mmse_imputed_baseline <- make_participant_summary(
+  df            = HABS_full_df_mmse_imputed,
+  id_col        = "id",
+  time_col      = "months_since_baseline",
+  visit_col     = "visit_no",   # or NULL if absent
+  dataset_col   = NULL,         # <- optional
+  value_col     = "MMSE",
+  out_col       = "dMMSE_per_year",
+  med_cols      = med_cols,
+  demo_cols     = c("age","sex","APOE4","status"),
+  collapse_mode = "baseline"
+)
+```
+
+
+```{r}
+groups1 <- tribble(
+  ~label,   ~filter_expr,
+  "Full",   "TRUE",
+  "Female", "sex == 1",
+  "Male",   "sex == 0",
+  "APOE4+", "APOE4 == 1",
+  "APOE4−", "APOE4 == 0",
+  "HC",     "status == 'HC'",
+  "MCI",    "status == 'MCI'",
+  "AD",    "status == 'AD'"
+)
+
+
+eff_all <- purrr::imap_dfr(
+  list(NACC = NACC_full_df_mmse_imputed_baseline, 
+       AIBL = AIBL_full_df_mmse_imputed_baseline, 
+       HABS = HABS_full_df_mmse_imputed_baseline), 
+  ~build_effects(data = .x, 
+                meds = med_cols, 
+                outcome = "dMMSE_per_year", 
+                groups_df = groups1, 
+                covars = c("age", "sex", "APOE4"), 
+                min_n = 30) |> 
+    dplyr::mutate(dataset = .y)
+)
+
+row_order_7 <- rev(groups1$label)
+n_rows <- length(row_order_7)
+n_cols <- length(med_cols)
+
+pdf("../plots/heatmap/MMSE_baselineMed_pvalue_heatmap_groups.pdf",
+    width = n_cols * 0.6 * 3,
+    height = n_rows * 0.6)
+
+print(
+  plot_pvalue_continuous_heatmap(
+    eff_all,
+    meds_order = med_cols,
+    row_order = row_order_7,
+    title = "Medication P-value Significance by Cohort (MMSE)",
+    subtitle = "Cell color: dark red = significant, light blue = non-significant",
+    p_limit = 0.15  # Cap p-values at 0.1 for better color scaling
+  ) +
+  ggplot2::facet_wrap(~dataset, nrow = 1) +
+  ggplot2::coord_fixed()
+)
+
+dev.off()
+```
+
+
+
+
+
+
+
+```{r}
+# --- define two-way subgroups in the same tribble format ---
+groups2 <- tribble(
+  ~label,             ~filter_expr,
+  "HC·Female",        "status == 'HC'  & sex == 1",
+  "HC·Male",          "status == 'HC'  & sex == 0",
+  "MCI·Female",       "status == 'MCI' & sex == 1",
+  "MCI·Male",         "status == 'MCI' & sex == 0",
+  "AD·Female",       "status == 'AD' & sex == 1",
+  "AD·Male",         "status == 'AD' & sex == 0",
+  "HC·APOE4+",        "status == 'HC'  & APOE4 == 1",
+  "HC·APOE4−",        "status == 'HC'  & APOE4 == 0",
+  "MCI·APOE4+",       "status == 'MCI' & APOE4 == 1",
+  "MCI·APOE4−",       "status == 'MCI' & APOE4 == 0",
+  "AD·APOE4+",       "status == 'AD' & APOE4 == 1",
+  "AD·APOE4−",       "status == 'AD' & APOE4 == 0",
+  "Female·APOE4+",    "sex == 1 & APOE4 == 1",
+  "Female·APOE4−",    "sex == 1 & APOE4 == 0",
+  "Male·APOE4+",      "sex == 0 & APOE4 == 1",
+  "Male·APOE4−",      "sex == 0 & APOE4 == 0"
+)
+
+eff_all <- purrr::imap_dfr(
+  list(NACC = NACC_full_df_mmse_imputed_baseline, 
+       AIBL = AIBL_full_df_mmse_imputed_baseline, 
+       HABS = HABS_full_df_mmse_imputed_baseline), 
+  ~build_effects(data = .x, 
+                meds = med_cols, 
+                outcome = "dMMSE_per_year", 
+                groups_df = groups2, 
+                covars = c("age", "sex", "APOE4"), 
+                min_n = 30) |> 
+    dplyr::mutate(dataset = .y)
+)
+
+row_order_7 <- rev(groups2$label)
+n_rows <- length(row_order_7)
+n_cols <- length(med_cols)
+
+pdf("../plots/heatmap/MMSE_baselineMed_pvalue_heatmap_subgroups.pdf",
+    width = n_cols * 0.6 * 3,
+    height = n_rows * 0.6)
+
+print(
+  plot_pvalue_continuous_heatmap(
+    eff_all,
+    meds_order = med_cols,
+    row_order = row_order_7,
+    title = "Medication P-value Significance by Cohort (MMSE)",
+    subtitle = "Cell color: dark red = significant, light blue = non-significant",
+    p_limit = 0.15  # Cap p-values at 0.1 for better color scaling
+  ) +
+  ggplot2::facet_wrap(~dataset, nrow = 1) +
+  ggplot2::coord_fixed()
+)
+
+dev.off()
+
+```
+
+
+
+
+################## MMSE Overall medicaton#############
+```{r}
+AIBL_full_df_mmse_imputed_overall <- make_participant_summary(
+  df            = AIBL_full_df_mmse_imputed,
+  id_col        = "id",
+  time_col      = "months_since_baseline",
+  visit_col     = "visit_no",   # or NULL if absent
+  dataset_col   = NULL,         # <- optional
+  value_col     = "MMSE",
+  out_col       = "dMMSE_per_year",
+  med_cols      = med_cols,
+  demo_cols     = c("age","sex","APOE4","status"),
+  collapse_mode = "overall"
+)
+
+NACC_full_df_mmse_imputed_overall <- make_participant_summary(
+  df            = NACC_full_df_mmse_imputed,
+  id_col        = "id",
+  time_col      = "months_since_baseline",
+  visit_col     = "visit_no",   # or NULL if absent
+  dataset_col   = NULL,         # <- optional
+  value_col     = "MMSE",
+  out_col       = "dMMSE_per_year",
+  med_cols      = med_cols,
+  demo_cols     = c("age","sex","APOE4","status"),
+  collapse_mode = "overall"
+)
+
+HABS_full_df_mmse_imputed_overall <- make_participant_summary(
+  df            = HABS_full_df_mmse_imputed,
+  id_col        = "id",
+  time_col      = "months_since_baseline",
+  visit_col     = "visit_no",   # or NULL if absent
+  dataset_col   = NULL,         # <- optional
+  value_col     = "MMSE",
+  out_col       = "dMMSE_per_year",
+  med_cols      = med_cols,
+  demo_cols     = c("age","sex","APOE4","status"),
+  collapse_mode = "overall"
+)
+```
+
+```{r}
+eff_all <- purrr::imap_dfr(
+  list(NACC = NACC_full_df_mmse_imputed_overall, 
+       AIBL = AIBL_full_df_mmse_imputed_overall, 
+       HABS = HABS_full_df_mmse_imputed_overall), 
+  ~build_effects(data = .x, 
+                meds = med_cols, 
+                outcome = "dMMSE_per_year", 
+                groups_df = groups1, 
+                covars = c("age", "sex", "APOE4"), 
+                min_n = 30) |> 
+    dplyr::mutate(dataset = .y)
+)
+
+row_order_7 <- rev(groups1$label)
+n_rows <- length(row_order_7)
+n_cols <- length(med_cols)
+
+pdf("../plots/heatmap/MMSE_overallMed_pvalue_heatmap_groups.pdf",
+    width = n_cols * 0.6 * 3,
+    height = n_rows * 0.6)
+
+print(
+  plot_pvalue_continuous_heatmap(
+    eff_all,
+    meds_order = med_cols,
+    row_order = row_order_7,
+    title = "Medication P-value Significance by Cohort (MMSE)",
+    subtitle = "Cell color: dark red = significant, light blue = non-significant",
+    p_limit = 0.15  # Cap p-values at 0.1 for better color scaling
+  ) +
+  ggplot2::facet_wrap(~dataset, nrow = 1) +
+  ggplot2::coord_fixed()
+)
+
+dev.off()
+
+```
+
+```{r}
+
+eff_all <- purrr::imap_dfr(
+  list(NACC = NACC_full_df_mmse_imputed_overall, 
+       AIBL = AIBL_full_df_mmse_imputed_overall, 
+       HABS = HABS_full_df_mmse_imputed_overall), 
+  ~build_effects(data = .x, 
+                meds = med_cols, 
+                outcome = "dMMSE_per_year", 
+                groups_df = groups2, 
+                covars = c("age", "sex", "APOE4"), 
+                min_n = 30) |> 
+    dplyr::mutate(dataset = .y)
+)
+
+row_order_7 <- rev(groups2$label)
+n_rows <- length(row_order_7)
+n_cols <- length(med_cols)
+
+pdf("../plots/heatmap/MMSE_overallMed_pvalue_heatmap_subgroups.pdf",
+    width = n_cols * 0.6 * 3,
+    height = n_rows * 0.6)
+
+print(
+  plot_pvalue_continuous_heatmap(
+    eff_all,
+    meds_order = med_cols,
+    row_order = row_order_7,
+    title = "Medication P-value Significance by Cohort (MMSE)",
+    subtitle = "Cell color: dark red = significant, light blue = non-significant",
+    p_limit = 0.15  # Cap p-values at 0.1 for better color scaling
+  ) +
+  ggplot2::facet_wrap(~dataset, nrow = 1) +
+  ggplot2::coord_fixed()
+)
+
+dev.off()
+```
+
+
+
+
+```{r}
+NACC_full_df_cdr_imputed<-read.csv("../preprocessed_data/NACC/NACC_cdr_imputed_binary.csv")
+AIBL_full_df_cdr_imputed<-read.csv("../preprocessed_data/AIBL/AIBL_cdr_imputed_binary.csv")
+HABS_full_df_cdr_imputed<-read.csv("../preprocessed_data/HABSHD/HABSHD_cdr_imputed_binary.csv")
+```
+
+################## MMSE Baseline medicaton#############
+```{r}
+AIBL_full_df_cdr_imputed_baseline <- make_participant_summary(
+  df            = AIBL_full_df_cdr_imputed,
+  id_col        = "id",
+  time_col      = "months_since_baseline",
+  visit_col     = "visit_no",   # or NULL if absent
+  dataset_col   = NULL,         # <- optional
+  value_col     = "CDR",
+  out_col       = "dCDR_per_year",
+  med_cols      = med_cols,
+  demo_cols     = c("age","sex","APOE4","status"),
+  collapse_mode = "baseline"
+)
+
+NACC_full_df_cdr_imputed_baseline <- make_participant_summary(
+  df            = NACC_full_df_cdr_imputed,
+  id_col        = "id",
+  time_col      = "months_since_baseline",
+  visit_col     = "visit_no",   # or NULL if absent
+  dataset_col   = NULL,         # <- optional
+  value_col     = "CDR",
+  out_col       = "dCDR_per_year",
+  med_cols      = med_cols,
+  demo_cols     = c("age","sex","APOE4","status"),
+  collapse_mode = "baseline"
+)
+
+HABS_full_df_cdr_imputed_baseline <- make_participant_summary(
+  df            = HABS_full_df_cdr_imputed,
+  id_col        = "id",
+  time_col      = "months_since_baseline",
+  visit_col     = "visit_no",   # or NULL if absent
+  dataset_col   = NULL,         # <- optional
+  value_col     = "CDR",
+  out_col       = "dCDR_per_year",
+  med_cols      = med_cols,
+  demo_cols     = c("age","sex","APOE4","status"),
+  collapse_mode = "baseline"
+)
+```
+
+
+```{r}
+eff_all <- purrr::imap_dfr(
+  list(NACC = NACC_full_df_cdr_imputed_baseline, 
+       AIBL = AIBL_full_df_cdr_imputed_baseline, 
+       HABS = HABS_full_df_cdr_imputed_baseline), 
+  ~build_effects(data = .x, 
+                meds = med_cols, 
+                outcome = "dCDR_per_year", 
+                groups_df = groups1, 
+                covars = c("age", "sex", "APOE4"), 
+                min_n = 30) |> 
+    dplyr::mutate(dataset = .y)
+)
+
+row_order_7 <- rev(groups1$label)
+n_rows <- length(row_order_7)
+n_cols <- length(med_cols)
+
+pdf("../plots/heatmap/CDR_baselineMed_pvalue_heatmap_groups.pdf",
+    width = n_cols * 0.6 * 3,
+    height = n_rows * 0.6)
+
+print(
+  plot_pvalue_continuous_heatmap(
+    eff_all,
+    meds_order = med_cols,
+    row_order = row_order_7,
+    title = "Medication P-value Significance by Cohort (CDR)",
+    subtitle = "Cell color: dark red = significant, light blue = non-significant",
+    p_limit = 0.15  # Cap p-values at 0.1 for better color scaling
+  ) +
+  ggplot2::facet_wrap(~dataset, nrow = 1) +
+  ggplot2::coord_fixed()
+)
+
+dev.off()
+```
+
+
+
+
+
+
+
+```{r}
+eff_all <- purrr::imap_dfr(
+  list(NACC = NACC_full_df_cdr_imputed_baseline, 
+       AIBL = AIBL_full_df_cdr_imputed_baseline, 
+       HABS = HABS_full_df_cdr_imputed_baseline), 
+  ~build_effects(data = .x, 
+                meds = med_cols, 
+                outcome = "dCDR_per_year", 
+                groups_df = groups2, 
+                covars = c("age", "sex", "APOE4"), 
+                min_n = 30) |> 
+    dplyr::mutate(dataset = .y)
+)
+
+row_order_7 <- rev(groups2$label)
+n_rows <- length(row_order_7)
+n_cols <- length(med_cols)
+
+pdf("../plots/heatmap/CDR_baselineMed_pvalue_heatmap_subgroups.pdf",
+    width = n_cols * 0.6 * 3,
+    height = n_rows * 0.6)
+
+print(
+  plot_pvalue_continuous_heatmap(
+    eff_all,
+    meds_order = med_cols,
+    row_order = row_order_7,
+    title = "Medication P-value Significance by Cohort (CDR)",
+    subtitle = "Cell color: dark red = significant, light blue = non-significant",
+    p_limit = 0.15  # Cap p-values at 0.1 for better color scaling
+  ) +
+  ggplot2::facet_wrap(~dataset, nrow = 1) +
+  ggplot2::coord_fixed()
+)
+
+dev.off()
+
+```
+
+
+
+
+################## MMSE Overall medicaton#############
+```{r}
+AIBL_full_df_cdr_imputed_overall <- make_participant_summary(
+  df            = AIBL_full_df_cdr_imputed,
+  id_col        = "id",
+  time_col      = "months_since_baseline",
+  visit_col     = "visit_no",   # or NULL if absent
+  dataset_col   = NULL,         # <- optional
+  value_col     = "CDR",
+  out_col       = "dCDR_per_year",
+  med_cols      = med_cols,
+  demo_cols     = c("age","sex","APOE4","status"),
+  collapse_mode = "overall"
+)
+
+NACC_full_df_cdr_imputed_overall <- make_participant_summary(
+  df            = NACC_full_df_cdr_imputed,
+  id_col        = "id",
+  time_col      = "months_since_baseline",
+  visit_col     = "visit_no",   # or NULL if absent
+  dataset_col   = NULL,         # <- optional
+  value_col     = "CDR",
+  out_col       = "dCDR_per_year",
+  med_cols      = med_cols,
+  demo_cols     = c("age","sex","APOE4","status"),
+  collapse_mode = "overall"
+)
+
+HABS_full_df_cdr_imputed_overall <- make_participant_summary(
+  df            = HABS_full_df_cdr_imputed,
+  id_col        = "id",
+  time_col      = "months_since_baseline",
+  visit_col     = "visit_no",   # or NULL if absent
+  dataset_col   = NULL,         # <- optional
+  value_col     = "CDR",
+  out_col       = "dCDR_per_year",
+  med_cols      = med_cols,
+  demo_cols     = c("age","sex","APOE4","status"),
+  collapse_mode = "overall"
+)
+```
+
+```{r}
+eff_all <- purrr::imap_dfr(
+  list(NACC = NACC_full_df_cdr_imputed_overall, 
+       AIBL = AIBL_full_df_cdr_imputed_overall, 
+       HABS = HABS_full_df_cdr_imputed_overall), 
+  ~build_effects(data = .x, 
+                meds = med_cols, 
+                outcome = "dCDR_per_year", 
+                groups_df = groups1, 
+                covars = c("age", "sex", "APOE4"), 
+                min_n = 30) |> 
+    dplyr::mutate(dataset = .y)
+)
+
+row_order_7 <- rev(groups1$label)
+n_rows <- length(row_order_7)
+n_cols <- length(med_cols)
+
+pdf("../plots/heatmap/CDR_overallMed_pvalue_heatmap_groups.pdf",
+    width = n_cols * 0.6 * 3,
+    height = n_rows * 0.6)
+
+print(
+  plot_pvalue_continuous_heatmap(
+    eff_all,
+    meds_order = med_cols,
+    row_order = row_order_7,
+    title = "Medication P-value Significance by Cohort (CDR)",
+    subtitle = "Cell color: dark red = significant, light blue = non-significant",
+    p_limit = 0.15  # Cap p-values at 0.1 for better color scaling
+  ) +
+  ggplot2::facet_wrap(~dataset, nrow = 1) +
+  ggplot2::coord_fixed()
+)
+
+dev.off()
+
+```
+
+```{r}
+eff_all <- purrr::imap_dfr(
+  list(NACC = NACC_full_df_cdr_imputed_overall, 
+       AIBL = AIBL_full_df_cdr_imputed_overall, 
+       HABS = HABS_full_df_cdr_imputed_overall), 
+  ~build_effects(data = .x, 
+                meds = med_cols, 
+                outcome = "dCDR_per_year", 
+                groups_df = groups2, 
+                covars = c("age", "sex", "APOE4"), 
+                min_n = 30) |> 
+    dplyr::mutate(dataset = .y)
+)
+
+row_order_7 <- rev(groups2$label)
+n_rows <- length(row_order_7)
+n_cols <- length(med_cols)
+
+pdf("../plots/heatmap/CDR_overallMed_pvalue_heatmap_subgroups.pdf",
+    width = n_cols * 0.6 * 3,
+    height = n_rows * 0.6)
+
+print(
+  plot_pvalue_continuous_heatmap(
+    eff_all,
+    meds_order = med_cols,
+    row_order = row_order_7,
+    title = "Medication P-value Significance by Cohort (CDR)",
+    subtitle = "Cell color: dark red = significant, light blue = non-significant",
+    p_limit = 0.15  # Cap p-values at 0.1 for better color scaling
+  ) +
+  ggplot2::facet_wrap(~dataset, nrow = 1) +
+  ggplot2::coord_fixed()
+)
+
+dev.off()
+```

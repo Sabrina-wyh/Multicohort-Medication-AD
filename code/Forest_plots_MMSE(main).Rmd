@@ -1,0 +1,387 @@
+---
+title: "meta_plots"
+author: "Yihan Wang"
+date: "2025-09-16"
+output: word_document
+---
+
+```{r}
+rm(list=ls())
+library(missRanger)
+library(dplyr)
+library(lubridate)
+library(lme4)       # mixed models
+library(lmerTest)   # p-values for lmer
+library(splines)
+library(conflicted)
+library(broom.mixed)
+library(dplyr)
+library(stringr)
+library(forcats)
+library(ggplot2)
+library(forestploter)
+library(grid)
+library(gridtext)
+conflicts_prefer(dplyr::lag)
+conflicts_prefer(lmerTest::lmer)
+conflicts_prefer(dplyr::filter)
+```
+
+```{r}
+source("medication-lmer-utility.R")
+source("plots.R")
+```
+
+```{r}
+NACC_full_df_mmse<-read.csv("../preprocessed_data/NACC/NACC_mmse_imputed.csv")
+AIBL_full_df_mmse<-read.csv("../preprocessed_data/AIBL/AIBL_mmse_imputed.csv")
+HABS_full_df_mmse<-read.csv("../preprocessed_data/HABSHD/HABSHD_mmse_imputed.csv")
+NACC_full_df_mmse$edu <- scale(NACC_full_df_mmse$edu)
+NACC_full_df_mmse$age <- scale(NACC_full_df_mmse$age)
+AIBL_full_df_mmse$edu <- scale(AIBL_full_df_mmse$edu)
+AIBL_full_df_mmse$age <- scale(AIBL_full_df_mmse$age)
+HABS_full_df_mmse$edu <- scale(HABS_full_df_mmse$edu)
+HABS_full_df_mmse$age <- scale(HABS_full_df_mmse$age)
+```
+
+# Main
+### FUll
+```{r}
+NACC_full_df_mmse$visit_date <- as.Date(NACC_full_df_mmse$visit_date, format = "%Y-%m-%d")
+fit_full_NACC <- lmer(
+  MMSE ~ months_since_baseline +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Statin + Metformin +
+    ACEi:months_since_baseline + ARB:months_since_baseline + BetaBlk:months_since_baseline +
+    CCB:months_since_baseline + Diuretic:months_since_baseline + Statin:months_since_baseline +
+    Metformin:months_since_baseline +
+    age + sex + edu + APOE4 +
+    (1 + months_since_baseline | id),
+  data = NACC_full_df_mmse
+)
+summary(fit_full_NACC)
+```
+
+
+```{r}
+AIBL_full_df_mmse$visit_date <- as.Date(AIBL_full_df_mmse$visit_date, format = "%Y-%m-%d")
+fit_full_AIBL <- lmer(
+  MMSE ~ months_since_baseline +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Statin + Metformin +
+    ACEi:months_since_baseline + ARB:months_since_baseline + BetaBlk:months_since_baseline +
+    CCB:months_since_baseline + Diuretic:months_since_baseline + Statin:months_since_baseline +
+    Metformin:months_since_baseline +
+    age + sex + edu + APOE4 +
+    (1 + months_since_baseline | id),
+  data = AIBL_full_df_mmse
+)
+summary(fit_full_AIBL)
+```
+
+```{r}
+HABS_full_df_mmse$visit_date <- as.Date(HABS_full_df_mmse$visit_date, format = "%Y-%m-%d")
+fit_full_HABS <- lmer(
+  MMSE ~ months_since_baseline +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Statin + Metformin +
+    ACEi:months_since_baseline + ARB:months_since_baseline + BetaBlk:months_since_baseline +
+    CCB:months_since_baseline + Diuretic:months_since_baseline + Statin:months_since_baseline +
+    Metformin:months_since_baseline +
+    age + sex + edu + APOE4 +
+    (1 + months_since_baseline | id),
+  data = HABS_full_df_mmse
+)
+summary(fit_full_HABS)
+```
+
+# Gender Stratficaton
+```{r}
+NACC_male = NACC_full_df_mmse[NACC_full_df_mmse$sex == 0, ]
+NACC_female = NACC_full_df_mmse[NACC_full_df_mmse$sex == 1, ]
+AIBL_male = AIBL_full_df_mmse[AIBL_full_df_mmse$sex == 0, ]
+AIBL_female = AIBL_full_df_mmse[AIBL_full_df_mmse$sex == 1, ]
+HABS_male = HABS_full_df_mmse[HABS_full_df_mmse$sex == 0, ]
+HABS_female = HABS_full_df_mmse[HABS_full_df_mmse$sex == 1, ]
+```
+
+```{r}
+NACC_female$visit_date <- as.Date(NACC_female$visit_date, format = "%Y-%m-%d")
+fit_female_NACC <- lmer(
+  MMSE ~ months_since_baseline +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Statin + Metformin +
+    ACEi:months_since_baseline + ARB:months_since_baseline + BetaBlk:months_since_baseline +
+    CCB:months_since_baseline + Diuretic:months_since_baseline + Statin:months_since_baseline +
+    Metformin:months_since_baseline +
+    age + edu + APOE4 +
+    (1 + months_since_baseline | id),
+  data = NACC_female
+)
+summary(fit_female_NACC)
+```
+
+```{r}
+NACC_male$visit_date <- as.Date(NACC_male$visit_date, format = "%Y-%m-%d")
+fit_male_NACC <- lmer(
+  MMSE ~ months_since_baseline +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Statin + Metformin +
+    ACEi:months_since_baseline + ARB:months_since_baseline + BetaBlk:months_since_baseline +
+    CCB:months_since_baseline + Diuretic:months_since_baseline + Statin:months_since_baseline +
+    Metformin:months_since_baseline +
+    age + edu + APOE4 +
+    (1 + months_since_baseline | id),
+  data = NACC_male
+)
+summary(fit_male_NACC)
+```
+
+
+```{r}
+AIBL_female$visit_date <- as.Date(AIBL_female$visit_date, format = "%Y-%m-%d")
+fit_female_AIBL <- lmer(
+  MMSE ~ months_since_baseline +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Statin + Metformin +
+    ACEi:months_since_baseline + ARB:months_since_baseline + BetaBlk:months_since_baseline +
+    CCB:months_since_baseline + Diuretic:months_since_baseline + Statin:months_since_baseline +
+    Metformin:months_since_baseline +
+    age + edu + APOE4 +
+    (1 + months_since_baseline | id),
+  data = AIBL_female
+)
+summary(fit_female_AIBL)
+```
+
+```{r}
+AIBL_male$visit_date <- as.Date(AIBL_male$visit_date, format = "%Y-%m-%d")
+fit_male_AIBL <- lmer(
+  MMSE ~ months_since_baseline +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Statin + Metformin +
+    ACEi:months_since_baseline + ARB:months_since_baseline + BetaBlk:months_since_baseline +
+    CCB:months_since_baseline + Diuretic:months_since_baseline + Statin:months_since_baseline +
+    Metformin:months_since_baseline +
+    age + edu + APOE4 +
+    (1 + months_since_baseline | id),
+  data = AIBL_male
+)
+summary(fit_male_AIBL)
+```
+
+
+```{r}
+HABS_female$visit_date <- as.Date(HABS_female$visit_date, format = "%Y-%m-%d")
+fit_female_HABS <- lmer(
+  MMSE ~ months_since_baseline +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Statin + Metformin +
+    ACEi:months_since_baseline + ARB:months_since_baseline + BetaBlk:months_since_baseline +
+    CCB:months_since_baseline + Diuretic:months_since_baseline + Statin:months_since_baseline +
+    Metformin:months_since_baseline +
+    age + edu + APOE4 +
+    (1 + months_since_baseline | id),
+  data = HABS_female
+)
+summary(fit_female_HABS)
+```
+
+```{r}
+HABS_male$visit_date <- as.Date(HABS_male$visit_date, format = "%Y-%m-%d")
+fit_male_HABS <- lmer(
+  MMSE ~ months_since_baseline +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Statin + Metformin +
+    ACEi:months_since_baseline + ARB:months_since_baseline + BetaBlk:months_since_baseline +
+    CCB:months_since_baseline + Diuretic:months_since_baseline + Statin:months_since_baseline +
+    Metformin:months_since_baseline +
+    age + edu + APOE4 +
+    (1 + months_since_baseline | id),
+  data = HABS_male
+)
+summary(fit_male_HABS)
+```
+
+# APOE Stratficaton
+```{r}
+NACC_APOEY = NACC_full_df_mmse[NACC_full_df_mmse$APOE4 == 1, ]
+NACC_APOEN = NACC_full_df_mmse[NACC_full_df_mmse$APOE4 == 0, ]
+AIBL_APOEY = AIBL_full_df_mmse[AIBL_full_df_mmse$APOE4 == 1, ]
+AIBL_APOEN = AIBL_full_df_mmse[AIBL_full_df_mmse$APOE4 == 0, ]
+HABS_APOEY = HABS_full_df_mmse[HABS_full_df_mmse$APOE4 == 1, ]
+HABS_APOEN = HABS_full_df_mmse[HABS_full_df_mmse$APOE4 == 0, ]
+```
+
+```{r}
+NACC_APOEY$visit_date <- as.Date(NACC_APOEY$visit_date, format = "%Y-%m-%d")
+fit_APOEY_NACC <- lmer(
+  MMSE ~ months_since_baseline +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Statin + Metformin +
+    ACEi:months_since_baseline + ARB:months_since_baseline + BetaBlk:months_since_baseline +
+    CCB:months_since_baseline + Diuretic:months_since_baseline + Statin:months_since_baseline +
+    Metformin:months_since_baseline +
+    age + edu + sex +
+    (1 + months_since_baseline | id),
+  data = NACC_APOEY
+)
+summary(fit_APOEY_NACC)
+```
+
+```{r}
+NACC_APOEN$visit_date <- as.Date(NACC_APOEN$visit_date, format = "%Y-%m-%d")
+fit_APOEN_NACC <- lmer(
+  MMSE ~ months_since_baseline +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Statin + Metformin +
+    ACEi:months_since_baseline + ARB:months_since_baseline + BetaBlk:months_since_baseline +
+    CCB:months_since_baseline + Diuretic:months_since_baseline + Statin:months_since_baseline +
+    Metformin:months_since_baseline +
+    age + edu + sex +
+    (1 + months_since_baseline | id),
+  data = NACC_APOEN
+)
+summary(fit_APOEN_NACC)
+```
+
+```{r}
+AIBL_APOEY$visit_date <- as.Date(AIBL_APOEY$visit_date, format = "%Y-%m-%d")
+fit_APOEY_AIBL <- lmer(
+  MMSE ~ months_since_baseline +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Statin + Metformin +
+    ACEi:months_since_baseline + ARB:months_since_baseline + BetaBlk:months_since_baseline +
+    CCB:months_since_baseline + Diuretic:months_since_baseline + Statin:months_since_baseline +
+    Metformin:months_since_baseline +
+    age + edu + sex +
+    (1 + months_since_baseline | id),
+  data = AIBL_APOEY
+)
+summary(fit_APOEY_AIBL)
+```
+
+```{r}
+AIBL_APOEN$visit_date <- as.Date(AIBL_APOEN$visit_date, format = "%Y-%m-%d")
+fit_APOEN_AIBL <- lmer(
+  MMSE ~ months_since_baseline +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Statin + Metformin +
+    ACEi:months_since_baseline + ARB:months_since_baseline + BetaBlk:months_since_baseline +
+    CCB:months_since_baseline + Diuretic:months_since_baseline + Statin:months_since_baseline +
+    Metformin:months_since_baseline +
+    age + edu + sex +
+    (1 + months_since_baseline | id),
+  data = AIBL_APOEN
+)
+summary(fit_APOEN_AIBL)
+```
+
+```{r}
+HABS_APOEY$visit_date <- as.Date(HABS_APOEY$visit_date, format = "%Y-%m-%d")
+fit_APOEY_HABS <- lmer(
+  MMSE ~ months_since_baseline +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Statin + Metformin +
+    ACEi:months_since_baseline + ARB:months_since_baseline + BetaBlk:months_since_baseline +
+    CCB:months_since_baseline + Diuretic:months_since_baseline + Statin:months_since_baseline +
+    Metformin:months_since_baseline +
+    age + edu + sex +
+    (1 + months_since_baseline | id),
+  data = HABS_APOEY
+)
+summary(fit_APOEY_HABS)
+```
+
+```{r}
+HABS_APOEN$visit_date <- as.Date(HABS_APOEN$visit_date, format = "%Y-%m-%d")
+fit_APOEN_HABS <- lmer(
+  MMSE ~ months_since_baseline +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Statin + Metformin +
+    ACEi:months_since_baseline + ARB:months_since_baseline + BetaBlk:months_since_baseline +
+    CCB:months_since_baseline + Diuretic:months_since_baseline + Statin:months_since_baseline +
+    Metformin:months_since_baseline +
+    age + edu + sex +
+    (1 + months_since_baseline | id),
+  data = HABS_APOEN
+)
+summary(fit_APOEN_HABS)
+```
+
+
+```{r}
+terms_all <-c(
+    "months_since_baseline","ACEiTrue","ARBTrue","BetaBlkTrue","CCBTrue",
+    "DiureticTrue","StatinTrue","MetforminTrue","age","sex","edu","APOE4",
+    "months_since_baseline:ACEiTrue","months_since_baseline:ARBTrue",
+    "months_since_baseline:BetaBlkTrue","months_since_baseline:CCBTrue",
+    "months_since_baseline:DiureticTrue","months_since_baseline:StatinTrue",
+    "months_since_baseline:MetforminTrue"
+  )
+terms_rename <- c(
+    "months_since_baseline"="Time",
+    "ACEiTrue"="ACE inhibitor",
+    "ARBTrue"="ARB",
+    "BetaBlkTrue"="Beta blocker",
+    "CCBTrue"="Calcium channel blocker",
+    "DiureticTrue"="Diuretic",
+    "StatinTrue"="Statin",
+    "MetforminTrue"="Metformin",
+    "age"="Age (baseline)",
+    "sex"="Sex (ref: Female)",
+    "edu"="Education (z-scored)",
+    "APOE4"="APOE4 carrier (ref: Yes)",
+    "months_since_baseline:ACEiTrue"="ACEi × Time",
+    "months_since_baseline:ARBTrue"="ARB × Time",
+    "months_since_baseline:BetaBlkTrue"="Beta blocker × Time",
+    "months_since_baseline:CCBTrue"="CCB × Time",
+    "months_since_baseline:DiureticTrue"="Diuretic × Time",
+    "months_since_baseline:StatinTrue"="Statin × Time",
+    "months_since_baseline:MetforminTrue"="Metformin × Time"
+  )
+```
+
+
+```{r}
+plot_forest_subset(
+  fits = list(
+    Full     = list(fit_full_NACC, fit_full_AIBL, fit_full_HABS),
+    Female   = list(fit_female_NACC, fit_female_AIBL, fit_female_HABS),
+    Male     = list(fit_male_NACC, fit_male_AIBL, fit_male_HABS),
+    APOE4pos = list(fit_APOEY_NACC, fit_APOEY_AIBL, fit_APOEY_HABS),
+    APOE4neg = list(fit_APOEN_NACC, fit_APOEN_AIBL, fit_APOEN_HABS)
+  ),
+  terms = terms_all,
+  groups = c("Full","Female","Male","APOE4pos","APOE4neg"),
+  term_labels = terms_rename,
+  cohort_colors = c("#DAA87C","#92A5D1","#C9DCC4"),
+  title = " ",
+  width=25, height=20, row_padding_mm=12, x_pad=0.15,
+  cohort_nudge=0.30, point_size=0.40, line_width=1.2,
+  filename="../plots/forestplot/MMSE_forestplot_main.pdf"
+)
+```
+
+```{r}
+
+dt_<-make_dt_from_fits(list(
+    Full     = list(fit_full_NACC, fit_full_AIBL, fit_full_HABS),
+    Female   = list(fit_female_NACC, fit_female_AIBL, fit_female_HABS),
+    Male     = list(fit_male_NACC, fit_male_AIBL, fit_male_HABS),
+    APOE4pos = list(fit_APOEY_NACC, fit_APOEY_AIBL, fit_APOEY_HABS),
+    APOE4neg = list(fit_APOEN_NACC, fit_APOEN_AIBL, fit_APOEN_HABS)
+  ), terms_all, term_labels = terms_rename)
+
+```
+
+
+
+
+
+# CU
+```{r}
+AIBL_hc= split_by_baseline(AIBL_full_df_mmse_imputed, id_col = "id", visit_col = "visit_no", status_col = "status")$HC
+AIBL_mci= split_by_baseline(AIBL_full_df_mmse_imputed, id_col = "id", visit_col = "visit_no", status_col = "status")$MCI
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
