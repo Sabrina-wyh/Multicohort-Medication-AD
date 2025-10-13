@@ -18,7 +18,7 @@ source("plots.R")
 ```
 
 ```{r}
-med_cols<-c("ACEi","ARB","BetaBlk","CCB","Diuretic","Statin","Metformin")
+med_cols<-c("ACEi","ARB","BetaBlk","CCB","Diuretic","Metformin","Statin")
 ```
 
 #### AIBL
@@ -31,6 +31,7 @@ MMSE
 AIBL_full_df_mmse<-clean_by_measure(AIBL_full_df, 'MMSE')
 missing_summary(AIBL_full_df_mmse)
 AIBL_full_df_mmse_imputed<- missranger_impute(AIBL_full_df_mmse, c('id', 'status'))
+AIBL_full_df_mmse_imputed<- enforce_static_and_reindex(AIBL_full_df_mmse_imputed, id_col="id", visit_col="visit_no", static_cols=c("sex", "edu","APOE4"), prefer_non_na=TRUE)
 write.csv(AIBL_full_df_mmse_imputed, "../preprocessed_data/AIBL/AIBL_mmse_imputed.csv", row.names = FALSE)
 ```
 
@@ -48,6 +49,7 @@ CDR
 AIBL_full_df_cdr<-clean_by_measure(AIBL_full_df, 'CDR')
 missing_summary(AIBL_full_df_cdr)
 AIBL_full_df_cdr_imputed<- missranger_impute(AIBL_full_df_cdr, c('id', 'status'))
+AIBL_full_df_cdr_imputed<- enforce_static_and_reindex(AIBL_full_df_cdr_imputed, id_col="id", visit_col="visit_no", static_cols=c("sex", "edu","APOE4"), prefer_non_na=TRUE)
 write.csv(AIBL_full_df_cdr_imputed, "../preprocessed_data/AIBL/AIBL_cdr_imputed.csv", row.names = FALSE)
 ```
 
@@ -71,6 +73,7 @@ MMSE
 NACC_full_df_mmse<-clean_by_measure(NACC_full_df, 'MMSE')
 missing_summary(NACC_full_df_mmse)
 NACC_full_df_mmse_imputed<- missranger_impute(NACC_full_df_mmse, c('id', 'status'))
+NACC_full_df_mmse_imputed<- enforce_static_and_reindex(NACC_full_df_mmse_imputed, id_col="id", visit_col="visit_no", static_cols=c("sex", "edu","APOE4"), prefer_non_na=TRUE)
 write.csv(NACC_full_df_mmse_imputed, "../preprocessed_data/NACC/NACC_mmse_imputed.csv", row.names = FALSE)
 ```
 
@@ -89,6 +92,7 @@ CDR
 NACC_full_df_cdr<-clean_by_measure(NACC_full_df, 'CDR')
 missing_summary(NACC_full_df_cdr)
 NACC_full_df_cdr_imputed<- missranger_impute(NACC_full_df_cdr, c('id', 'status'))
+NACC_full_df_cdr_imputed<- enforce_static_and_reindex(NACC_full_df_cdr_imputed, id_col="id", visit_col="visit_no", static_cols=c("sex", "edu","APOE4"), prefer_non_na=TRUE)
 write.csv(NACC_full_df_cdr_imputed, "../preprocessed_data/NACC/NACC_cdr_imputed.csv", row.names = FALSE)
 ```
 
@@ -111,6 +115,7 @@ MMSE
 HABS_full_df_mmse<-clean_by_measure(HABS_full_df, 'MMSE')
 missing_summary(HABS_full_df_mmse)
 HABS_full_df_mmse_imputed<- missranger_impute(HABS_full_df_mmse, c('id', 'status'))
+HABS_full_df_mmse_imputed<- enforce_static_and_reindex(HABS_full_df_mmse_imputed, id_col="id", visit_col="visit_no", static_cols=c("sex", "edu","APOE4"), prefer_non_na=TRUE)
 write.csv(HABS_full_df_mmse_imputed, "../preprocessed_data/HABSHD/HABSHD_mmse_imputed.csv", row.names = FALSE)
 ```
 
@@ -129,6 +134,7 @@ CDR
 HABS_full_df_cdr<-clean_by_measure(HABS_full_df, 'CDR')
 missing_summary(HABS_full_df_cdr)
 HABS_full_df_cdr_imputed<- missranger_impute(HABS_full_df_cdr, c('id', 'status'))
+HABS_full_df_cdr_imputed<- enforce_static_and_reindex(HABS_full_df_cdr_imputed, id_col="id", visit_col="visit_no", static_cols=c("sex", "edu","APOE4"), prefer_non_na=TRUE)
 write.csv(HABS_full_df_cdr_imputed, "../preprocessed_data/HABSHD/HABSHD_cdr_imputed.csv", row.names = FALSE)
 ```
 

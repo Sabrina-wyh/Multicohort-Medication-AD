@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from typing import List, Dict, Tuple, Optional, Union, Any, Sequence
 from joblib import Parallel, delayed
+import statsmodels.api as sm
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 
@@ -688,6 +689,60 @@ def clean_longitudinal(df, id_col='id', time_col='months_since_baseline', visit_
     df[visit_col] = df.groupby(id_col)[time_col].rank(method='first').astype(int)
     return df.reset_index(drop=True)
 
+# def baseline_summary(df):
+#     df = df.copy()
+#     # pick baseline rows (visit_no==1 preferred, else months_since_baseline==0)
+#     baseline = df[df['visit_no'] == 1] if 'visit_no' in df else df[df['months_since_baseline'] == 0]
+#     baseline = baseline.sort_values(['id', 'months_since_baseline']).drop_duplicates('id', keep='first')
+
+#     n = baseline['id'].nunique()  # number of participants
+
+#     # helper formatters
+#     fmt_mean_sd = lambda s: f"{s.mean():.1f} ± {s.std(ddof=1):.1f}" if len(s)>0 else np.nan
+#     fmt_count_pct = lambda s: f"{s} ({s/n*100:.1f}%)" if n>0 else "0 (0.0%)"
+#     fmt_iqr = lambda s: f"{s.median():.1f} [{s.quantile(0.25):.1f}–{s.quantile(0.75):.1f}]" if len(s)>0 else np.nan
+#     fmt_minmax = lambda s: f"{s.min():.1f} – {s.max():.1f}" if len(s)>0 else np.nan
+
+#     # metrics
+#     age = fmt_mean_sd(baseline['age'])
+#     female = fmt_count_pct(((baseline['sex'].astype(str).str.upper().isin(['F','FEMALE'])) | 
+#                         (baseline['sex'] == 1)).sum())
+#     edu = fmt_mean_sd(baseline['edu'])
+#     # apoe = fmt_count_pct((baseline['APOE4'].astype(str).str.upper().isin(['1','YES','TRUE',])).sum())
+#     apoe = fmt_count_pct(((baseline['APOE4'].astype(str).str.upper().isin(['1','YES','TRUE'])) | 
+#                         (baseline['APOE4'] == 1)).sum())
+#     # visits = fmt_iqr(df.groupby('id').size())
+#     visits = fmt_minmax(df.groupby('id').size())
+#     # followup = fmt_minmax(df.groupby('id')['months_since_baseline'].max() - df.groupby('id')['months_since_baseline'].min())
+#     followup = fmt_minmax(df.groupby('id')['months_since_baseline'].agg(lambda s: s.max(skipna=True) - s.min(skipna=True)).dropna())
+
+#     cu = fmt_count_pct((baseline['status'].astype(str).str.upper() == 'HC').sum())
+#     mci = fmt_count_pct((baseline['status'].astype(str).str.upper() == 'MCI').sum())
+#     ad = fmt_count_pct((baseline['status'].astype(str).str.upper() == 'AD').sum())
+#     meds = fmt_mean_sd(baseline['Total_Meds'])
+
+#     cdr_change  = fmt_mean_sd(df.sort_values(['id','months_since_baseline']).groupby('id')['CDR'] .apply(lambda s: s.dropna().iloc[-1]-s.dropna().iloc[0] if s.dropna().size>1 else np.nan).dropna())
+#     mmse_change = fmt_mean_sd(df.sort_values(['id','months_since_baseline']).groupby('id')['MMSE'].apply(lambda s: s.dropna().iloc[-1]-s.dropna().iloc[0] if s.dropna().size>1 else np.nan).dropna())
+
+#     return pd.DataFrame({
+#         "Measure": [
+#             "Age at baseline (year)",
+#             "Gender (Female)",
+#             "Education (year)",
+#             "APOE4 (YES)**",
+#             "Visits (Record)",
+#             "Follow up intervals (Month)",
+#             "CU at baseline",
+#             "MCI at baseline",
+#             "AD at baseline",
+#             "Average medication taken at baseline",
+#             "Overall CDR change",
+#             "Overall MMSE change"
+#         ],
+#         "Value": [
+#             age, female, edu, apoe, visits, followup, cu, mci, ad, meds, cdr_change,mmse_change
+#         ]
+#     })
 def baseline_summary(df):
     df = df.copy()
     # pick baseline rows (visit_no==1 preferred, else months_since_baseline==0)
@@ -710,16 +765,15 @@ def baseline_summary(df):
     # apoe = fmt_count_pct((baseline['APOE4'].astype(str).str.upper().isin(['1','YES','TRUE',])).sum())
     apoe = fmt_count_pct(((baseline['APOE4'].astype(str).str.upper().isin(['1','YES','TRUE'])) | 
                         (baseline['APOE4'] == 1)).sum())
-    visits = fmt_iqr(df.groupby('id').size())
-    followup = fmt_minmax(df.groupby('id')['months_since_baseline'].max() - df.groupby('id')['months_since_baseline'].min())
+    # visits = fmt_iqr(df.groupby('id').size())
+    visits = fmt_minmax(df.groupby('id').size())
+    # followup = fmt_minmax(df.groupby('id')['months_since_baseline'].max() - df.groupby('id')['months_since_baseline'].min())
+    followup = fmt_mean_sd(df.groupby('id')['months_since_baseline'].agg(lambda s: s.max(skipna=True) - s.min(skipna=True)).dropna())
 
     cu = fmt_count_pct((baseline['status'].astype(str).str.upper() == 'HC').sum())
     mci = fmt_count_pct((baseline['status'].astype(str).str.upper() == 'MCI').sum())
     ad = fmt_count_pct((baseline['status'].astype(str).str.upper() == 'AD').sum())
     meds = fmt_mean_sd(baseline['Total_Meds'])
-
-    cdr_change  = fmt_mean_sd(df.sort_values(['id','months_since_baseline']).groupby('id')['CDR'] .apply(lambda s: s.dropna().iloc[-1]-s.dropna().iloc[0] if s.dropna().size>1 else np.nan).dropna())
-    mmse_change = fmt_mean_sd(df.sort_values(['id','months_since_baseline']).groupby('id')['MMSE'].apply(lambda s: s.dropna().iloc[-1]-s.dropna().iloc[0] if s.dropna().size>1 else np.nan).dropna())
 
     return pd.DataFrame({
         "Measure": [
@@ -732,12 +786,123 @@ def baseline_summary(df):
             "CU at baseline",
             "MCI at baseline",
             "AD at baseline",
-            "Average medication taken at baseline",
-            "Overall CDR change",
-            "Overall MMSE change"
+            "Average medication taken at baseline"
         ],
         "Value": [
-            age, female, edu, apoe, visits, followup, cu, mci, ad, meds, cdr_change,mmse_change
+            age, female, edu, apoe, visits, followup, cu, mci, ad, meds
         ]
     })
 
+# def baseline_age_by_med(df, med_cols, age_col='age', id_col='id', visit_col='visit_no'):
+#     # 1) Keep baseline rows and ensure one row per participant
+#     base = (df.loc[df[visit_col].eq(1), [id_col, age_col] + med_cols]
+#               .sort_values(id_col)
+#               .drop_duplicates(subset=id_col, keep='first'))
+    
+#     # 2) Reshape meds to long format: one row per id × drug
+#     long = base.melt(id_vars=[id_col, age_col],
+#                      value_name='user', var_name='drug')
+    
+#     # 3) Clean types: user → 0/1, drop missing ages or user flags
+#     long['user'] = pd.to_numeric(long['user'], errors='coerce').astype('Int64')
+#     long = long.dropna(subset=[age_col, 'user'])
+    
+#     # 4) Group and aggregate
+#     out = (long.groupby(['drug', 'user'])[age_col]
+#                .agg(n='count', mean='mean', sd='std')
+#                .reset_index())
+    
+#     # 5) Tidy labels + formatting
+#     out['user'] = out['user'].map({0: 'non-user', 1: 'user'})
+#     out[['mean', 'sd']] = out[['mean', 'sd']].round(2)
+#     out['mean_sd'] = out.apply(lambda r: f"{r['mean']} ({r['sd']})", axis=1)
+    
+#     # Optional: order columns
+#     return out[['drug', 'user', 'n', 'mean', 'sd', 'mean_sd']]
+
+import numpy as np
+from scipy.stats import ttest_ind
+
+# def baseline_age_by_med(df, med_cols, age_col='age', id_col='id', visit_col='visit_no'):
+#     # 1) Keep baseline rows and ensure one row per participant
+#     base = (df.loc[df[visit_col].eq(1), [id_col, age_col] + med_cols]
+#               .sort_values(id_col)
+#               .drop_duplicates(subset=id_col, keep='first'))
+
+#     # 2) Reshape meds to long format: one row per id × drug
+#     long = base.melt(id_vars=[id_col, age_col], value_name='user', var_name='drug')
+
+#     # 3) Clean types: user → 0/1, drop missing ages or user flags
+#     long['user'] = pd.to_numeric(long['user'], errors='coerce').astype('Int64')
+#     long = long.dropna(subset=[age_col, 'user'])
+
+#     # 4) Group and aggregate
+#     out = (long.groupby(['drug', 'user'])[age_col]
+#                .agg(n='count', mean='mean', sd='std')
+#                .reset_index())
+
+#     # 5) Tidy labels + formatting
+#     out['user'] = out['user'].map({0: 'non-user', 1: 'user'})
+#     out[['mean', 'sd']] = out[['mean', 'sd']].round(2)
+#     out['mean_sd'] = out.apply(lambda r: f"{r['mean']} ({r['sd']})", axis=1)
+
+#     # 6) Per-drug Welch t-test p-values (users vs non-users)
+#     def welch_p(g):
+#         a = g.loc[g['user'].eq(1), age_col].astype(float).dropna()
+#         b = g.loc[g['user'].eq(0), age_col].astype(float).dropna()
+#         if len(a) == 0 or len(b) == 0:
+#             return np.nan
+#         return ttest_ind(a, b, equal_var=False, nan_policy='omit').pvalue
+
+#     pvals = (long.groupby('drug', as_index=False)
+#                  .apply(lambda g: pd.Series({'p': welch_p(g)}))
+#                  .reset_index(drop=True))
+
+#     # 7) Merge and return ordered columns
+#     out = out.merge(pvals, on='drug', how='left')
+#     return out[['drug', 'user', 'n', 'mean', 'sd', 'mean_sd', 'p']]
+
+def baseline_age_by_med(df, med_cols, age_col='age', id_col='id', visit_col='visit_no'):
+    base = (df.loc[df[visit_col].eq(1), [id_col, age_col] + med_cols]
+              .sort_values(id_col).drop_duplicates(subset=id_col, keep='first'))
+    long = base.melt(id_vars=[id_col, age_col], value_name='user', var_name='drug')
+    long['user'] = pd.to_numeric(long['user'], errors='coerce').astype('Int64')
+    long = long.dropna(subset=[age_col, 'user'])
+
+    out = (long.groupby(['drug', 'user'])[age_col]
+               .agg(n='count', mean='mean', sd='std').reset_index())
+    out['user'] = out['user'].map({0:'non-user',1:'user'})
+    out[['mean','sd']] = out[['mean','sd']].round(2)
+    out['mean_sd'] = out.apply(lambda r: f"{r['mean']} ({r['sd']})", axis=1)
+
+    # Wald test per drug: H0 beta_user = 0 in OLS(age ~ 1 + user)
+    def wald(g):
+        g = g.dropna(subset=[age_col,'user']).copy()
+        if g['user'].nunique() < 2: return pd.Series({'wald_chi2':np.nan,'wald_p':np.nan})
+        X = sm.add_constant(g['user'].astype(float))
+        y = g[age_col].astype(float)
+        fit = sm.OLS(y, X, missing='drop').fit()
+        w = fit.wald_test('user = 0')
+        return pd.Series({'wald_chi2': float(w.statistic), 'wald_p': float(w.pvalue)})
+
+    wald_df = long.groupby('drug', as_index=False).apply(wald).reset_index(drop=True)
+    out = out.merge(wald_df, on='drug', how='left')
+    return out[['drug','user','n','mean','sd','mean_sd','wald_chi2','wald_p']]
+
+
+def qc(df, col, id_col='id', visit_col='visit_no', baseline_no=1):
+    total_rows = len(df)
+    missing = df[col].isna().sum()
+    total_ids = df[id_col].nunique()
+
+    has_1 = df.groupby(id_col)[col].apply(lambda s: s.notna().any()).sum()
+    has_2 = df.groupby(id_col)[col].apply(lambda s: s.notna().sum() >= 2).sum()
+
+    base_mask = df[visit_col].eq(baseline_no)
+    base_ids_total = df.loc[base_mask, id_col].nunique()
+    base_ids_with = df.loc[base_mask & df[col].notna(), id_col].nunique()
+
+    print(f"Missing in {col}: {missing} / {total_rows}")
+    print(f"Participants with ≥1 '{col}' value: {has_1} / {total_ids}")
+    print(f"Participants with ≥2 '{col}' values: {has_2} / {total_ids}")
+    print(f"Participants with baseline '{col}' value: {base_ids_with} / {base_ids_total}")

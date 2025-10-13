@@ -44,11 +44,17 @@ HABS_full_df_mmse$edu <- scale(HABS_full_df_mmse$edu)
 HABS_full_df_mmse$age <- scale(HABS_full_df_mmse$age)
 ```
 
-# Main
-### FUll
 ```{r}
-NACC_full_df_mmse$visit_date <- as.Date(NACC_full_df_mmse$visit_date, format = "%Y-%m-%d")
-fit_full_NACC <- lmer(
+NACC_hc= split_by_baseline(NACC_full_df_mmse, id_col = "id", visit_col = "visit_no", status_col = "status")$HC
+AIBL_hc= split_by_baseline(AIBL_full_df_mmse, id_col = "id", visit_col = "visit_no", status_col = "status")$HC
+HABS_hc= split_by_baseline(HABS_full_df_mmse, id_col = "id", visit_col = "visit_no", status_col = "status")$HC
+```
+
+
+### CU
+```{r}
+NACC_hc$visit_date <- as.Date(NACC_hc$visit_date, format = "%Y-%m-%d")
+fit_NACC_CU <- lmer(
   MMSE ~ year_since_baseline +
     age + sex + edu + APOE4 +
     ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
@@ -56,15 +62,15 @@ fit_full_NACC <- lmer(
     CCB:year_since_baseline + Diuretic:year_since_baseline + 
     Metformin:year_since_baseline + Statin:year_since_baseline +
     (1 + year_since_baseline | id),
-  data = NACC_full_df_mmse
+  data = NACC_hc
 )
-summary(fit_full_NACC)
+summary(fit_NACC_CU)
 ```
 
 
 ```{r}
-AIBL_full_df_mmse$visit_date <- as.Date(AIBL_full_df_mmse$visit_date, format = "%Y-%m-%d")
-fit_full_AIBL <- lmer(
+AIBL_hc$visit_date <- as.Date(AIBL_hc$visit_date, format = "%Y-%m-%d")
+fit_AIBL_CU <- lmer(
   MMSE ~ year_since_baseline +
     age + sex + edu + APOE4 +
     ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
@@ -72,14 +78,14 @@ fit_full_AIBL <- lmer(
     CCB:year_since_baseline + Diuretic:year_since_baseline + 
     Metformin:year_since_baseline + Statin:year_since_baseline +
     (1 + year_since_baseline | id),
-  data = AIBL_full_df_mmse
+  data = AIBL_hc
 )
-summary(fit_full_AIBL)
+summary(fit_AIBL_CU)
 ```
 
 ```{r}
-HABS_full_df_mmse$visit_date <- as.Date(HABS_full_df_mmse$visit_date, format = "%Y-%m-%d")
-fit_full_HABS <- lmer(
+HABS_hc$visit_date <- as.Date(HABS_hc$visit_date, format = "%Y-%m-%d")
+fit_HABS_CU <- lmer(
   MMSE ~ year_since_baseline +
     age + sex + edu + APOE4 +
     ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
@@ -87,214 +93,121 @@ fit_full_HABS <- lmer(
     CCB:year_since_baseline + Diuretic:year_since_baseline + 
     Metformin:year_since_baseline + Statin:year_since_baseline +
     (1 + year_since_baseline | id),
-  data = HABS_full_df_mmse
+  data = HABS_hc
 )
-summary(fit_full_HABS)
+summary(fit_HABS_CU)
 ```
 
-# Gender Stratficaton
+# MCI
 ```{r}
-NACC_male = NACC_full_df_mmse[NACC_full_df_mmse$sex == 0, ]
-NACC_female = NACC_full_df_mmse[NACC_full_df_mmse$sex == 1, ]
-AIBL_male = AIBL_full_df_mmse[AIBL_full_df_mmse$sex == 0, ]
-AIBL_female = AIBL_full_df_mmse[AIBL_full_df_mmse$sex == 1, ]
-HABS_male = HABS_full_df_mmse[HABS_full_df_mmse$sex == 0, ]
-HABS_female = HABS_full_df_mmse[HABS_full_df_mmse$sex == 1, ]
+NACC_mci= split_by_baseline(NACC_full_df_mmse, id_col = "id", visit_col = "visit_no", status_col = "status")$MCI
+AIBL_mci= split_by_baseline(AIBL_full_df_mmse, id_col = "id", visit_col = "visit_no", status_col = "status")$MCI
+HABS_mci= split_by_baseline(HABS_full_df_mmse, id_col = "id", visit_col = "visit_no", status_col = "status")$MCI
 ```
 
 ```{r}
-NACC_female$visit_date <- as.Date(NACC_female$visit_date, format = "%Y-%m-%d")
-fit_female_NACC <- lmer(
+NACC_mci$visit_date <- as.Date(NACC_mci$visit_date, format = "%Y-%m-%d")
+fit_NACC_MCI <- lmer(
   MMSE ~ year_since_baseline +
-    age + edu + APOE4 +
+    age + sex + edu + APOE4 +
     ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
     ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
     CCB:year_since_baseline + Diuretic:year_since_baseline + 
     Metformin:year_since_baseline + Statin:year_since_baseline +
     (1 + year_since_baseline | id),
-  data = NACC_female
+  data = NACC_mci
 )
-summary(fit_female_NACC)
+summary(fit_NACC_MCI)
 ```
 
 ```{r}
-NACC_male$visit_date <- as.Date(NACC_male$visit_date, format = "%Y-%m-%d")
-fit_male_NACC <- lmer(
+AIBL_mci$visit_date <- as.Date(AIBL_mci$visit_date, format = "%Y-%m-%d")
+fit_AIBL_MCI <- lmer(
   MMSE ~ year_since_baseline +
-    age + edu + APOE4 +
+    age + sex + edu + APOE4 +
     ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
     ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
     CCB:year_since_baseline + Diuretic:year_since_baseline + 
     Metformin:year_since_baseline + Statin:year_since_baseline +
     (1 + year_since_baseline | id),
-  data = NACC_male
+  data = AIBL_mci
 )
-summary(fit_male_NACC)
+summary(fit_AIBL_MCI)
 ```
 
 
 ```{r}
-AIBL_female$visit_date <- as.Date(AIBL_female$visit_date, format = "%Y-%m-%d")
-fit_female_AIBL <- lmer(
+HABS_mci$visit_date <- as.Date(HABS_mci$visit_date, format = "%Y-%m-%d")
+fit_HABS_MCI <- lmer(
   MMSE ~ year_since_baseline +
-    age + edu + APOE4 +
+    age + sex + edu + APOE4 +
     ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
     ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
     CCB:year_since_baseline + Diuretic:year_since_baseline + 
     Metformin:year_since_baseline + Statin:year_since_baseline +
     (1 + year_since_baseline | id),
-  data = AIBL_female
+  data = HABS_mci
 )
-summary(fit_female_AIBL)
-```
-
-```{r}
-AIBL_male$visit_date <- as.Date(AIBL_male$visit_date, format = "%Y-%m-%d")
-fit_male_AIBL <- lmer(
-  MMSE ~ year_since_baseline +
-    age + edu + APOE4 +
-    ACEi + ARB + BetaBlk + CCB + Diuretic +  Metformin + Statin +
-    ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
-    CCB:year_since_baseline + Diuretic:year_since_baseline + 
-    Metformin:year_since_baseline + Statin:year_since_baseline +
-    (1 + year_since_baseline | id),
-  data = AIBL_male
-)
-summary(fit_male_AIBL)
+summary(fit_HABS_MCI)
 ```
 
 
+# AD
 ```{r}
-HABS_female$visit_date <- as.Date(HABS_female$visit_date, format = "%Y-%m-%d")
-fit_female_HABS <- lmer(
-  MMSE ~ year_since_baseline +
-    age + edu + APOE4 +
-    ACEi + ARB + BetaBlk + CCB + Diuretic +  Metformin + Statin +
-    ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
-    CCB:year_since_baseline + Diuretic:year_since_baseline + 
-    Metformin:year_since_baseline + Statin:year_since_baseline +
-    (1 + year_since_baseline | id),
-  data = HABS_female
-)
-summary(fit_female_HABS)
+NACC_ad= split_by_baseline(NACC_full_df_mmse, id_col = "id", visit_col = "visit_no", status_col = "status")$AD
+AIBL_ad= split_by_baseline(AIBL_full_df_mmse, id_col = "id", visit_col = "visit_no", status_col = "status")$AD
+HABS_ad= split_by_baseline(HABS_full_df_mmse, id_col = "id", visit_col = "visit_no", status_col = "status")$AD
 ```
 
 ```{r}
-HABS_male$visit_date <- as.Date(HABS_male$visit_date, format = "%Y-%m-%d")
-fit_male_HABS <- lmer(
+NACC_ad$visit_date <- as.Date(NACC_ad$visit_date, format = "%Y-%m-%d")
+fit_NACC_AD <- lmer(
   MMSE ~ year_since_baseline +
-    age + edu + APOE4 +
+    age + sex + edu + APOE4 +
     ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
     ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
     CCB:year_since_baseline + Diuretic:year_since_baseline + 
     Metformin:year_since_baseline + Statin:year_since_baseline +
     (1 + year_since_baseline | id),
-  data = HABS_male
+  data = NACC_ad
 )
-summary(fit_male_HABS)
-```
-
-# APOE Stratficaton
-```{r}
-NACC_APOEY = NACC_full_df_mmse[NACC_full_df_mmse$APOE4 == 1, ]
-NACC_APOEN = NACC_full_df_mmse[NACC_full_df_mmse$APOE4 == 0, ]
-AIBL_APOEY = AIBL_full_df_mmse[AIBL_full_df_mmse$APOE4 == 1, ]
-AIBL_APOEN = AIBL_full_df_mmse[AIBL_full_df_mmse$APOE4 == 0, ]
-HABS_APOEY = HABS_full_df_mmse[HABS_full_df_mmse$APOE4 == 1, ]
-HABS_APOEN = HABS_full_df_mmse[HABS_full_df_mmse$APOE4 == 0, ]
+summary(fit_NACC_AD)
 ```
 
 ```{r}
-NACC_APOEY$visit_date <- as.Date(NACC_APOEY$visit_date, format = "%Y-%m-%d")
-fit_APOEY_NACC <- lmer(
+AIBL_ad$visit_date <- as.Date(AIBL_ad$visit_date, format = "%Y-%m-%d")
+fit_AIBL_AD <- lmer(
   MMSE ~ year_since_baseline +
-    age + sex + edu +
+    age + sex + edu + APOE4 +
     ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
     ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
     CCB:year_since_baseline + Diuretic:year_since_baseline + 
     Metformin:year_since_baseline + Statin:year_since_baseline +
     (1 + year_since_baseline | id),
-  data = NACC_APOEY
+  data = AIBL_ad
 )
-summary(fit_APOEY_NACC)
+summary(fit_AIBL_AD)
 ```
 
+
 ```{r}
-NACC_APOEN$visit_date <- as.Date(NACC_APOEN$visit_date, format = "%Y-%m-%d")
-fit_APOEN_NACC <- lmer(
+HABS_ad$visit_date <- as.Date(HABS_ad$visit_date, format = "%Y-%m-%d")
+fit_HABS_AD <- lmer(
   MMSE ~ year_since_baseline +
-    age + sex + edu +
+    age + sex + edu + APOE4 +
     ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
     ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
     CCB:year_since_baseline + Diuretic:year_since_baseline + 
     Metformin:year_since_baseline + Statin:year_since_baseline +
     (1 + year_since_baseline | id),
-  data = NACC_APOEN
+  data = HABS_ad
 )
-summary(fit_APOEN_NACC)
-```
-
-```{r}
-AIBL_APOEY$visit_date <- as.Date(AIBL_APOEY$visit_date, format = "%Y-%m-%d")
-fit_APOEY_AIBL <- lmer(
-  MMSE ~ year_since_baseline +
-    age + sex + edu +
-    ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
-    ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
-    CCB:year_since_baseline + Diuretic:year_since_baseline + 
-    Metformin:year_since_baseline + Statin:year_since_baseline +
-    (1 + year_since_baseline | id),
-  data = AIBL_APOEY
-)
-summary(fit_APOEY_AIBL)
-```
-
-```{r}
-AIBL_APOEN$visit_date <- as.Date(AIBL_APOEN$visit_date, format = "%Y-%m-%d")
-fit_APOEN_AIBL <- lmer(
-  MMSE ~ year_since_baseline +
-    age + sex + edu +
-    ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
-    ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
-    CCB:year_since_baseline + Diuretic:year_since_baseline + 
-    Metformin:year_since_baseline + Statin:year_since_baseline +
-    (1 + year_since_baseline | id),
-  data = AIBL_APOEN
-)
-summary(fit_APOEN_AIBL)
-```
-
-```{r}
-HABS_APOEY$visit_date <- as.Date(HABS_APOEY$visit_date, format = "%Y-%m-%d")
-fit_APOEY_HABS <- lmer(
-  MMSE ~ year_since_baseline +
-    age + sex + edu +
-    ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
-    ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
-    CCB:year_since_baseline + Diuretic:year_since_baseline + 
-    Metformin:year_since_baseline + Statin:year_since_baseline +
-    (1 + year_since_baseline | id),
-  data = HABS_APOEY
-)
-summary(fit_APOEY_HABS)
-```
-
-```{r}
-HABS_APOEN$visit_date <- as.Date(HABS_APOEN$visit_date, format = "%Y-%m-%d")
-fit_APOEN_HABS <- lmer(
-  MMSE ~ year_since_baseline +
-    age + sex + edu +
-    ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
-    ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
-    CCB:year_since_baseline + Diuretic:year_since_baseline + 
-    Metformin:year_since_baseline + Statin:year_since_baseline +
-    (1 + year_since_baseline | id),
-  data = HABS_APOEN
-)
-summary(fit_APOEN_HABS)
+summary(fit_HABS_AD)
 ```
 
 
+
+# plots
 ```{r}
 terms_all <-c(
     "year_since_baseline","age","sex","edu","APOE4",
@@ -332,24 +245,22 @@ terms_rename <- c(
 ```{r}
 plot_forest_subset(
   fits = list(
-    Full     = list(fit_full_NACC,   fit_full_AIBL,   fit_full_HABS),
-    Female   = list(fit_female_NACC, fit_female_AIBL, fit_female_HABS),
-    Male     = list(fit_male_NACC,   fit_male_AIBL,   fit_male_HABS),
-    APOE4pos = list(fit_APOEY_NACC,  fit_APOEY_AIBL,  fit_APOEY_HABS),
-    APOE4neg = list(fit_APOEN_NACC,  fit_APOEN_AIBL,  fit_APOEN_HABS)
+    CU     = list(fit_NACC_CU,   fit_AIBL_CU,   fit_HABS_CU),
+    MCI   = list(fit_NACC_MCI,   fit_AIBL_MCI,   fit_HABS_MCI),
+    AD     = list(fit_NACC_AD,   fit_AIBL_AD,   fit_HABS_AD)
   ),
   terms        = terms_all,
-  groups       = c("Full","Female","Male","APOE4pos","APOE4neg"),
+  groups       = c("CU","MCI","AD"),
   cohorts      = c("NACC","AIBL","HABS"),
   term_labels  = terms_rename,
   title        = "",
-  filename     = "../plots/forestplot/MMSE_forestplot_main.pdf",
-  width        = 25,
+  filename     = "../plots/forestplot/MMSE_forestplot_cognition.pdf",
+  width        = 15,
   height       = 20,
 
   # layout / styling
   ref_line     = 0,
-  xlim_fixed   = c(-1.5, 1.5),
+  xlim_fixed   = c(-2.3, 2.3),
   cohort_colors = c("#DAA87C", "#92A5D1", "#C9DCC4"),
   cohort_shapes = c(15, 16, 18),
   point_size   = 0.8,

@@ -73,7 +73,8 @@ HABS_full_df_mmse_imputed_baseline <- make_participant_summary(
 )
 ```
 
-
+Medication P-value Significance by Cohort (MMSE)
+Cell color: dark red = significant, light blue = non-significant
 ```{r}
 groups1 <- tribble(
   ~label,   ~filter_expr,
@@ -114,8 +115,10 @@ print(
     eff_all,
     meds_order = med_cols,
     row_order = row_order_7,
-    title = "Medication P-value Significance by Cohort (MMSE)",
-    subtitle = "Cell color: dark red = significant, light blue = non-significant",
+    dataset_order = c("NACC","AIBL","HABS"),
+    nrow_facets   = 1,
+    title = "",
+    subtitle = "",
     p_limit = 0.15  # Cap p-values at 0.1 for better color scaling
   ) +
   ggplot2::facet_wrap(~dataset, nrow = 1) +
@@ -124,9 +127,6 @@ print(
 
 dev.off()
 ```
-
-
-
 
 
 
@@ -179,8 +179,10 @@ print(
     eff_all,
     meds_order = med_cols,
     row_order = row_order_7,
-    title = "Medication P-value Significance by Cohort (MMSE)",
-    subtitle = "Cell color: dark red = significant, light blue = non-significant",
+    dataset_order = c("NACC","AIBL","HABS"),
+    nrow_facets   = 1,
+    title = "",
+    subtitle = "",
     p_limit = 0.15  # Cap p-values at 0.1 for better color scaling
   ) +
   ggplot2::facet_wrap(~dataset, nrow = 1) +
@@ -263,8 +265,10 @@ print(
     eff_all,
     meds_order = med_cols,
     row_order = row_order_7,
-    title = "Medication P-value Significance by Cohort (MMSE)",
-    subtitle = "Cell color: dark red = significant, light blue = non-significant",
+    dataset_order = c("NACC","AIBL","HABS"),
+    nrow_facets   = 1,
+    title = "",
+    subtitle = "",
     p_limit = 0.15  # Cap p-values at 0.1 for better color scaling
   ) +
   ggplot2::facet_wrap(~dataset, nrow = 1) +
@@ -303,8 +307,10 @@ print(
     eff_all,
     meds_order = med_cols,
     row_order = row_order_7,
-    title = "Medication P-value Significance by Cohort (MMSE)",
-    subtitle = "Cell color: dark red = significant, light blue = non-significant",
+    dataset_order = c("NACC","AIBL","HABS"),
+    nrow_facets   = 1,
+    title = "",
+    subtitle = "",
     p_limit = 0.15  # Cap p-values at 0.1 for better color scaling
   ) +
   ggplot2::facet_wrap(~dataset, nrow = 1) +
@@ -393,8 +399,10 @@ print(
     eff_all,
     meds_order = med_cols,
     row_order = row_order_7,
-    title = "Medication P-value Significance by Cohort (CDR)",
-    subtitle = "Cell color: dark red = significant, light blue = non-significant",
+    dataset_order = c("NACC","AIBL","HABS"),
+    nrow_facets   = 1,
+    title = "",
+    subtitle = "",
     p_limit = 0.15  # Cap p-values at 0.1 for better color scaling
   ) +
   ggplot2::facet_wrap(~dataset, nrow = 1) +
@@ -437,8 +445,10 @@ print(
     eff_all,
     meds_order = med_cols,
     row_order = row_order_7,
-    title = "Medication P-value Significance by Cohort (CDR)",
-    subtitle = "Cell color: dark red = significant, light blue = non-significant",
+    dataset_order = c("NACC","AIBL","HABS"),
+    nrow_facets   = 1,
+    title = "",
+    subtitle = "",
     p_limit = 0.15  # Cap p-values at 0.1 for better color scaling
   ) +
   ggplot2::facet_wrap(~dataset, nrow = 1) +
@@ -452,7 +462,7 @@ dev.off()
 
 
 
-################## MMSE Overall medicaton#############
+################## CDR Overall medicaton#############
 ```{r}
 AIBL_full_df_cdr_imputed_overall <- make_participant_summary(
   df            = AIBL_full_df_cdr_imputed,
@@ -521,8 +531,10 @@ print(
     eff_all,
     meds_order = med_cols,
     row_order = row_order_7,
-    title = "Medication P-value Significance by Cohort (CDR)",
-    subtitle = "Cell color: dark red = significant, light blue = non-significant",
+    dataset_order = c("NACC","AIBL","HABS"),
+    nrow_facets   = 1,
+    title = "",
+    subtitle = "",
     p_limit = 0.15  # Cap p-values at 0.1 for better color scaling
   ) +
   ggplot2::facet_wrap(~dataset, nrow = 1) +
@@ -560,8 +572,10 @@ print(
     eff_all,
     meds_order = med_cols,
     row_order = row_order_7,
-    title = "Medication P-value Significance by Cohort (CDR)",
-    subtitle = "Cell color: dark red = significant, light blue = non-significant",
+    dataset_order = c("NACC","AIBL","HABS"),
+    nrow_facets   = 1,
+    title = "",
+    subtitle = "",
     p_limit = 0.15  # Cap p-values at 0.1 for better color scaling
   ) +
   ggplot2::facet_wrap(~dataset, nrow = 1) +
