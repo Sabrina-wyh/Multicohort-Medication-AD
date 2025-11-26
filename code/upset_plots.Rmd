@@ -22,97 +22,55 @@ source("plots.R")
 ```
 
 ```{r}
-# med_cols<-c("ACEi","ARB","BetaBlk","CCB","Diuretic","Statin","Metformin")
 med_cols <- c("ACEi","ARB","BetaBlk","CCB","Diuretic","Metformin","Statin")
+med_cols_rename <-c("ACEi","ARBs","β-Blocker","CCBs","Diuretics","Statins","Metformin")
 ```
 
 ################## Meta Analysis - Overall ##################
 
-### MMSE - baseline
-```{r}
-meta_df_mmse <- read.csv("../preprocessed_data/meta/meta_mmse_upset.csv")
-```
 
-```{r}
-baseline_meta_df_mmse <- select_baseline(meta_df_mmse, c(med_cols, c('id', 'dataset')))
-pdf(file="../plots/upsetplot/meta_baseline_mmse_upset.pdf", onefile=FALSE)
-UpSetR::upset(baseline_meta_df_mmse, sets= rev(med_cols), 
-              # keep.order = TRUE,
-      queries = list(
-        list(query = elements, 
-             params = list("dataset", c("AIBL","HABS", "NACC")), color = "#92A5D1", active = T, query.name = "AIBL"),
-        list(query = elements, 
-             params = list("dataset", c("HABS", "NACC")), color = "#C9DCC4", active = T, query.name = "HABS"),
-        list(query = elements, 
-             params = list("dataset", "NACC"), color = "#DAA87C", active = T, query.name = "NACC")),
-      query.legend = "bottom",
-      nintersects = 30, 
-      order.by = "freq",
-      empty.intersections = "on",
-      mb.ratio=c(0.65,0.35), point.size=1, line.size=0.3)
-dev.off()
-```
-
-
-### MMSE - acrosslifetime
-```{r}
-overall_meta_df_mmse <- collapse_longitudinal(meta_df_mmse, med_cols)
-pdf(file="../plots/upsetplot/meta_overall_mmse_upset.pdf", onefile=FALSE)
-upset(overall_meta_df_mmse, sets= rev(med_cols), 
-      # keep.order = TRUE,
-      queries = list(
-        list(query = elements, 
-             params = list("dataset", c("AIBL","HABS", "NACC")), color = "#92A5D1", active = T, query.name = "AIBL"),
-        list(query = elements, 
-             params = list("dataset", c("HABS", "NACC")), color = "#C9DCC4", active = T, query.name = "HABS"),
-        list(query = elements, 
-             params = list("dataset", "NACC"), color = "#DAA87C", active = T, query.name = "NACC")),
-      query.legend = "bottom",
-      nintersects = 30, 
-      order.by = "freq",
-      empty.intersections = "on",
-      mb.ratio=c(0.65,0.35), point.size=1, line.size=0.3)
-dev.off()
-```
 
 ### CDR - baseline
 ```{r}
 meta_df_cdr <- read.csv("../preprocessed_data/meta/meta_cdr_upset.csv")
+colnames(meta_df_cdr)[colnames(meta_df_cdr) %in% med_cols] <- med_cols_rename
+
 ```
 
 ```{r}
-baseline_meta_df_cdr <- select_baseline(meta_df_cdr, c(med_cols, c('id', 'dataset')))
-pdf(file="../plots/upsetplot/meta_baseline_cdr_upset.pdf", onefile=FALSE)
-upset(baseline_meta_df_cdr, sets= rev(med_cols), 
+baseline_meta_df_cdr <- select_baseline(meta_df_cdr, c(med_cols_rename, c('id', 'dataset')))
+cairo_pdf(file="../plots/upsetplot/meta_baseline_cdr_upset.pdf", onefile=FALSE)
+upset(baseline_meta_df_cdr, sets= rev(med_cols_rename), 
       # keep.order = TRUE,
       queries = list(
-        list(query = elements, 
-             params = list("dataset", c("AIBL","HABS", "NACC")), color = "#92A5D1", active = T, query.name = "AIBL"),
-        list(query = elements, 
-             params = list("dataset", c("HABS", "NACC")), color = "#C9DCC4", active = T, query.name = "HABS"),
-        list(query = elements, 
-             params = list("dataset", "NACC"), color = "#DAA87C", active = T, query.name = "NACC")),
+        list(query = elements,
+             params = list("dataset", c("NACC", "AIBL","HABS")), color = "#DAA87C", active = T, query.name = "NACC"),
+        list(query = elements,
+             params = list("dataset", c("AIBL","HABS")), color = "#92A5D1", active = T, query.name = "AIBL"),
+        list(query = elements,
+             params = list("dataset", "HABS"), color = "#C9DCC4", active = T, query.name = "HABS-HD")),
       query.legend = "bottom",
       nintersects = 30, 
       order.by = "freq",
       empty.intersections = "on",
-      mb.ratio=c(0.65,0.35), point.size=1, line.size=0.3)
+      mb.ratio=c(0.65,0.35), point.size=1, line.size=0.3,
+      text.scale = c(1.1, 1, 1, 1, 1.2, 1))
 dev.off()
 ```
 
 ### CDR - acrosslifetime
 ```{r}
-overall_meta_df_cdr <- collapse_longitudinal(meta_df_cdr, med_cols)
-pdf(file="../plots/upsetplot/meta_overall_cdr_upset.pdf", onefile=FALSE)
-upset(overall_meta_df_cdr, sets= rev(med_cols), 
+overall_meta_df_cdr <- collapse_longitudinal(meta_df_cdr, med_cols_rename)
+cairo_pdf(file="../plots/upsetplot/meta_overall_cdr_upset.pdf", onefile=FALSE)
+upset(overall_meta_df_cdr, sets= rev(med_cols_rename), 
       # keep.order = TRUE,
       queries = list(
-        list(query = elements, 
-             params = list("dataset", c("AIBL","HABS", "NACC")), color = "#92A5D1", active = T, query.name = "AIBL"),
-        list(query = elements, 
-             params = list("dataset", c("HABS", "NACC")), color = "#C9DCC4", active = T, query.name = "HABS"),
-        list(query = elements, 
-             params = list("dataset", "NACC"), color = "#DAA87C", active = T, query.name = "NACC")),
+        list(query = elements,
+             params = list("dataset", c("NACC", "AIBL","HABS")), color = "#DAA87C", active = T, query.name = "NACC"),
+        list(query = elements,
+             params = list("dataset", c("AIBL","HABS")), color = "#92A5D1", active = T, query.name = "AIBL"),
+        list(query = elements,
+             params = list("dataset", "HABS"), color = "#C9DCC4", active = T, query.name = "HABS-HD")),
       query.legend = "bottom",
       nintersects = 30, 
       order.by = "freq",
@@ -122,36 +80,11 @@ dev.off()
 ```
 
 ################## AIBL ##################
-### MMSE - baseline
-```{r}
-baseline_AIBL_df_mmse <- baseline_meta_df_mmse[baseline_meta_df_mmse$dataset=="AIBL",]
-pdf(file="../plots/upsetplot/AIBL_baseline_mmse_upset.pdf", onefile=FALSE)
-upset(baseline_AIBL_df_mmse, sets= rev(med_cols), 
-      # keep.order = TRUE,
-      nintersects = 30, 
-      order.by = "freq",
-      empty.intersections = "on",
-      mb.ratio=c(0.65,0.35), point.size=1, line.size=0.3)
-dev.off()
-```
-### MMSE - acrosslifetime
-```{r}
-overall_AIBL_df_mmse <- overall_meta_df_mmse[overall_meta_df_mmse$dataset=="AIBL",]
-pdf(file="../plots/upsetplot/AIBL_overall_mmse_upset.pdf", onefile=FALSE)
-upset(overall_AIBL_df_mmse, sets= rev(med_cols), 
-      # keep.order = TRUE,
-      nintersects = 30, 
-      order.by = "freq",
-      empty.intersections = "on",
-      mb.ratio=c(0.65,0.35), point.size=1, line.size=0.3)
-dev.off()
-```
-
 ### CDR - baseline
 ```{r}
 baseline_AIBL_df_cdr <- baseline_meta_df_cdr[baseline_meta_df_cdr$dataset=="AIBL",]
-pdf(file="../plots/upsetplot/AIBL_baseline_cdr_upset.pdf", onefile=FALSE)
-upset(baseline_AIBL_df_cdr, sets= rev(med_cols), 
+cairo_pdf(file="../plots/upsetplot/AIBL_baseline_cdr_upset.pdf", onefile=FALSE)
+upset(baseline_AIBL_df_cdr, sets= rev(med_cols_rename), 
       # keep.order = TRUE,
       nintersects = 30, 
       order.by = "freq",
@@ -163,8 +96,8 @@ dev.off()
 ### CDR - acrosslifetime
 ```{r}
 overall_AIBL_df_cdr <- overall_meta_df_cdr[overall_meta_df_cdr$dataset=="AIBL",]
-pdf(file="../plots/upsetplot/AIBL_overall_cdr_upset.pdf", onefile=FALSE)
-upset(overall_AIBL_df_cdr, sets= rev(med_cols), 
+cairo_pdf(file="../plots/upsetplot/AIBL_overall_cdr_upset.pdf", onefile=FALSE)
+upset(overall_AIBL_df_cdr, sets= rev(med_cols_rename), 
       # keep.order = TRUE,
       nintersects = 30, 
       order.by = "freq",
@@ -173,36 +106,11 @@ upset(overall_AIBL_df_cdr, sets= rev(med_cols),
 dev.off()
 ```
 ################## NACC ##################
-### MMSE - baseline
-```{r}
-baseline_NACC_df_mmse <- baseline_meta_df_mmse[baseline_meta_df_mmse$dataset=="NACC",]
-pdf(file="../plots/upsetplot/NACC_baseline_mmse_upset.pdf", onefile=FALSE)
-upset(baseline_NACC_df_mmse, sets= rev(med_cols), 
-      # keep.order = TRUE,
-      nintersects = 30, 
-      order.by = "freq",
-      empty.intersections = "on",
-      mb.ratio=c(0.65,0.35), point.size=1, line.size=0.3)
-dev.off()
-```
-### MMSE - acrosslifetime
-```{r}
-overall_NACC_df_mmse <- overall_meta_df_mmse[overall_meta_df_mmse$dataset=="NACC",]
-pdf(file="../plots/upsetplot/NACC_overall_mmse_upset.pdf", onefile=FALSE)
-upset(overall_NACC_df_mmse, sets= rev(med_cols), 
-      # keep.order = TRUE,
-      nintersects = 30, 
-      order.by = "freq",
-      empty.intersections = "on",
-      mb.ratio=c(0.65,0.35), point.size=1, line.size=0.3)
-dev.off()
-```
-
 ### CDR - baseline
 ```{r}
 baseline_NACC_df_cdr <- baseline_meta_df_cdr[baseline_meta_df_cdr$dataset=="NACC",]
-pdf(file="../plots/upsetplot/NACC_baseline_cdr_upset.pdf", onefile=FALSE)
-upset(baseline_NACC_df_cdr, sets= rev(med_cols), 
+cairo_pdf(file="../plots/upsetplot/NACC_baseline_cdr_upset.pdf", onefile=FALSE)
+upset(baseline_NACC_df_cdr, sets= rev(med_cols_rename), 
       # keep.order = TRUE,
       nintersects = 30, 
       order.by = "freq",
@@ -214,8 +122,8 @@ dev.off()
 ### CDR - acrosslifetime
 ```{r}
 overall_NACC_df_cdr <- overall_meta_df_cdr[overall_meta_df_cdr$dataset=="NACC",]
-pdf(file="../plots/upsetplot/NACC_overall_cdr_upset.pdf", onefile=FALSE)
-upset(overall_NACC_df_cdr, sets= rev(med_cols), 
+cairo_pdf(file="../plots/upsetplot/NACC_overall_cdr_upset.pdf", onefile=FALSE)
+upset(overall_NACC_df_cdr, sets= rev(med_cols_rename), 
       # keep.order = TRUE,
       nintersects = 30, 
       order.by = "freq",
@@ -225,36 +133,11 @@ dev.off()
 ```
 
 ################## HABS ##################
-### MMSE - baseline
-```{r}
-baseline_HABS_df_mmse <- baseline_meta_df_mmse[baseline_meta_df_mmse$dataset=="HABS",]
-pdf(file="../plots/upsetplot/HABS_baseline_mmse_upset.pdf", onefile=FALSE)
-upset(baseline_HABS_df_mmse, sets= rev(med_cols), 
-      # keep.order = TRUE,
-      nintersects = 30, 
-      order.by = "freq",
-      empty.intersections = "on",
-      mb.ratio=c(0.65,0.35), point.size=1, line.size=0.3)
-dev.off()
-```
-### MMSE - acrosslifetime
-```{r}
-overall_HABS_df_mmse <- overall_meta_df_mmse[overall_meta_df_mmse$dataset=="HABS",]
-pdf(file="../plots/upsetplot/HABS_overall_mmse_upset.pdf", onefile=FALSE)
-upset(overall_HABS_df_mmse, sets= rev(med_cols), 
-      # keep.order = TRUE,
-      nintersects = 30, 
-      order.by = "freq",
-      empty.intersections = "on",
-      mb.ratio=c(0.65,0.35), point.size=1, line.size=0.3)
-dev.off()
-```
-
 ### CDR - baseline
 ```{r}
 baseline_HABS_df_cdr <- baseline_meta_df_cdr[baseline_meta_df_cdr$dataset=="HABS",]
-pdf(file="../plots/upsetplot/HABS_baseline_cdr_upset.pdf", onefile=FALSE)
-upset(baseline_HABS_df_cdr, sets= rev(med_cols), 
+cairo_pdf(file="../plots/upsetplot/HABS_baseline_cdr_upset.pdf", onefile=FALSE)
+upset(baseline_HABS_df_cdr, sets= rev(med_cols_rename), 
       # keep.order = TRUE,
       nintersects = 30, 
       order.by = "freq",
@@ -266,8 +149,8 @@ dev.off()
 ### CDR - acrosslifetime
 ```{r}
 overall_HABS_df_cdr <- overall_meta_df_cdr[overall_meta_df_cdr$dataset=="HABS",]
-pdf(file="../plots/upsetplot/HABS_overall_cdr_upset.pdf", onefile=FALSE)
-upset(overall_HABS_df_cdr, sets= rev(med_cols), 
+cairo_pdf(file="../plots/upsetplot/HABS_overall_cdr_upset.pdf", onefile=FALSE)
+upset(overall_HABS_df_cdr, sets= rev(med_cols_rename), 
       # keep.order = TRUE,
       nintersects = 30, 
       order.by = "freq",

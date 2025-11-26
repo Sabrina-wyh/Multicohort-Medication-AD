@@ -8,7 +8,8 @@ library(ggplot2)
 library(forcats)
 library(stringr)
 library(scales)
-
+library(meta)
+library(metafor)
 ############## general description ##############
 
 
@@ -320,7 +321,7 @@ plot_pvalue_continuous_heatmap <- function(
     row_order    = NULL,
     p_limit      = 0.1,                # cap p-values for better visualization
     dataset_col  = "dataset",          # column holding cohort labels
-    dataset_order= c("NACC","AIBL","HABS"),
+    dataset_order= c("NACC","AIBL","HABS-HD"),
     nrow_facets  = 1                   # 1 => side-by-side
 ) {
   df <- effects_tbl
@@ -490,64 +491,340 @@ make_participant_summary <- function(
 
 
 ###### forest plot ######
-make_dt_from_fits <- function(fits, terms, term_labels = NULL) {
-  cohorts <- c("NACC","AIBL","HABS"); groups <- names(fits)
-  if (is.null(term_labels)) term_labels <- setNames(terms, terms)
-  stopifnot(all(terms %in% names(term_labels)))
-  # clean_labels <- trimws(unname(term_labels[terms]))
-  clean_labels <- paste0("     ", trimws(unname(term_labels[terms])))
-  out <- data.frame(Measurements = clean_labels, stringsAsFactors = FALSE)
-  
-  get_sig_stars <- function(p) dplyr::case_when(
-    is.na(p) ~ "", p < 0.001 ~ "***", p < 0.01 ~ "**",
-    p < 0.05 ~ "*", p < 0.1 ~ "^", TRUE ~ ""
-  )
-  
-  for (grp in groups) {
-    grp_fits <- fits[[grp]]; stopifnot(length(grp_fits) == length(cohorts))
-    for (i in seq_along(cohorts)) {
-      co <- summary(grp_fits[[i]])$coefficients
-      est <- se <- rep(NA_real_, length(terms)); names(est) <- names(se) <- terms
-      available <- intersect(terms, rownames(co))
-      if (length(available) > 0) {
-        est[available] <- co[available, "Estimate"]
-        se [available] <- co[available, "Std. Error"]
-      }
-      nm <- paste0(grp,"_",cohorts[i])
-      low <- hi <- rep(NA_real_, length(terms)); ok <- !is.na(est) & !is.na(se)
-      low[ok] <- est[ok] - 1.96*se[ok]; hi[ok] <- est[ok] + 1.96*se[ok]
-      out[[paste0(nm,"_est")]] <- est
-      out[[paste0(nm,"_low")]] <- low
-      out[[paste0(nm,"_hi")]]  <- hi
-    }
-    
-    est_mat  <- matrix(NA_real_, length(terms), length(cohorts), dimnames=list(terms, cohorts))
-    se_mat   <- est_mat; star_mat <- matrix("", length(terms), length(cohorts), dimnames=list(terms, cohorts))
-    for (i in seq_along(cohorts)) {
-      co <- summary(grp_fits[[i]])$coefficients
-      available <- intersect(terms, rownames(co))
-      if (length(available) > 0) {
-        est_mat[available, i] <- co[available, "Estimate"]
-        se_mat [available, i] <- co[available, "Std. Error"]
-        pv <- intersect(c("Pr(>|t|)","Pr(>|z|)","Pr(>|W|)","Pr(>Chisq)"), colnames(co))[1]
-        if (!is.na(pv)) star_mat[available, i] <- get_sig_stars(co[available, pv])
-      }
-    }
-    
-    txt <- vapply(seq_along(terms), function(j){
-      has <- !is.na(est_mat[j, ])
-      lines <- character(length(cohorts))
-      for (k in seq_along(cohorts)) {
-        lines[k] <- if (has[k]) sprintf("%+.3f (%.3f)%s", est_mat[j,k], se_mat[j,k], star_mat[j,k]) else "NA"
-      }
-      paste(lines, collapse = "\n")
-    }, character(1))
-    
-    out[[paste0(grp,"_Est_SE")]] <- txt
-    out[[grp]] <- paste(rep(" ", 20), collapse = " ")
+meta_one <- \(est, se, method="REML"){ 
+  ok <- is.finite(est)&is.finite(se)
+  if(sum(ok)<2) return(list(b=NA,lo=NA,hi=NA,w=rep(NA,length(est))))
+  fit <- rma.uni(yi=est[ok], sei=se[ok], method=method)
+  w <- rep(NA_real_, length(est))
+  w[ok] <- weights(fit)/sum(weights(fit))*100
+  list(b=as.numeric(fit$b), lo=fit$ci.lb, hi=fit$ci.ub, w=w, I2=fit$I2, tau2=fit$tau2) 
   }
+
+
+# make_dt_from_fits <- function(
+#     fits,
+#     terms,
+#     cohorts = c("NACC","AIBL","HABS"),
+#     term_labels = NULL,
+#     method = "REML",          # "REML" (random-effects) or "FE" (common-effect)
+#     digits = 3,
+#     add_pred_int = TRUE,
+#     p_adjust = c("none","BH") # NEW: control p-value adjustment
+# ){
+#   p_adjust <- match.arg(p_adjust)
+#   
+#   get_sig_stars <- function(p){
+#     s <- rep("", length(p))
+#     s[is.finite(p) & p < 0.001] <- "***"
+#     s[is.finite(p) & p >= 0.001 & p < 0.01] <- "**"
+#     s[is.finite(p) & p >= 0.01  & p < 0.05] <- "*"
+#     s[is.finite(p) & p >= 0.05  & p <= 0.10] <- "^"
+#     s
+#   }
+#   
+#   meta_one <- function(est, se, method="REML", add_pred_int=TRUE){
+#     ok <- is.finite(est) & is.finite(se)
+#     if (sum(ok) < 2L){
+#       return(list(b=NA_real_, se=NA_real_, lo=NA_real_, hi=NA_real_, p=NA_real_,
+#                   w=rep(NA_real_, length(est)), I2=NA_real_, tau2=NA_real_,
+#                   pi_lo=NA_real_, pi_hi=NA_real_))
+#     }
+#     fit <- metafor::rma.uni(yi = est[ok], sei = se[ok], method = method)
+#     ww  <- stats::weights(fit); w <- rep(NA_real_, length(est)); w[ok] <- ww / sum(ww) * 100
+#     pi_lo <- pi_hi <- NA_real_
+#     if (add_pred_int){
+#       pr <- tryCatch(stats::predict(fit), error = function(e) NULL)
+#       if (!is.null(pr) && all(c("pi.lb","pi.ub") %in% names(pr))) {
+#         pi_lo <- pr$pi.lb; pi_hi <- pr$pi.ub
+#       }
+#     }
+#     list(b=as.numeric(fit$b), se=as.numeric(fit$se), lo=fit$ci.lb, hi=fit$ci.ub, p=fit$pval,
+#          w=w, I2=fit$I2, tau2=fit$tau2, pi_lo=pi_lo, pi_hi=pi_hi)
+#   }
+#   
+#   groups <- names(fits)
+#   stopifnot(length(groups) > 0)
+#   stopifnot(all(vapply(fits, length, 1L) == length(cohorts)))
+#   if (is.null(term_labels)) term_labels <- stats::setNames(terms, terms)
+#   stopifnot(all(terms %in% names(term_labels)))
+#   clean_labels <- paste0("     ", trimws(unname(term_labels[terms])))
+#   
+#   out <- data.frame(Measurements = clean_labels, stringsAsFactors = FALSE, check.names = FALSE)
+#   
+#   for (grp in groups){
+#     grp_fits <- fits[[grp]]
+#     
+#     est_mat <- matrix(NA_real_, nrow = length(terms), ncol = length(cohorts),
+#                       dimnames = list(terms, cohorts))
+#     se_mat  <- est_mat
+#     pv_mat  <- est_mat
+#     
+#     for (i in seq_along(cohorts)){
+#       nm <- paste0(grp, "_", cohorts[i])
+#       co <- tryCatch(summary(grp_fits[[i]])$coefficients, error=function(e) NULL)
+#       
+#       est <- se <- low <- hi <- rep(NA_real_, length(terms))
+#       names(est) <- names(se) <- names(low) <- names(hi) <- terms
+#       
+#       if (!is.null(co) && is.matrix(co)){
+#         available <- intersect(terms, rownames(co))
+#         if (length(available) > 0){
+#           est[available] <- co[available, "Estimate"]
+#           se [available] <- co[available, "Std. Error"]
+#           pv_col <- intersect(colnames(co), c("Pr(>|t|)","Pr(>|z|)","Pr(>|W|)","Pr(>Chisq)"))
+#           if (length(pv_col)) pv_mat[available, cohorts[i]] <- co[available, pv_col[1L]]
+#         }
+#       }
+#       ok <- is.finite(est) & is.finite(se)
+#       low[ok] <- est[ok] - 1.96 * se[ok]
+#       hi [ok] <- est[ok] + 1.96 * se[ok]
+#       
+#       out[[paste0(nm, "_est")]] <- est
+#       out[[paste0(nm, "_low")]] <- low
+#       out[[paste0(nm, "_hi") ]] <- hi
+#       
+#       est_mat[, cohorts[i]] <- est
+#       se_mat [, cohorts[i]] <- se
+#     }
+#     
+#     ## --- NEW: adjust cohort p-values column-wise with BH, if requested ---
+#     if (p_adjust == "BH") {
+#       for (k in seq_along(cohorts)){
+#         colp <- pv_mat[, k]
+#         if (any(is.finite(colp))) {
+#           pv_mat[, k] <- stats::p.adjust(colp, method = "BH")
+#         }
+#       }
+#     }
+#     
+#     star_mat <- matrix("", nrow = length(terms), ncol = length(cohorts),
+#                        dimnames = list(terms, cohorts))
+#     has_p <- is.finite(pv_mat)
+#     if (any(has_p)) star_mat[has_p] <- get_sig_stars(pv_mat[has_p])
+#     
+#     estse_txt <- vapply(seq_along(terms), function(j){
+#       paste(vapply(seq_along(cohorts), function(k){
+#         e <- est_mat[j,k]; s <- se_mat[j,k]; st <- star_mat[j,k]
+#         if (is.finite(e) && is.finite(s)) sprintf("%+.*f (%.3f)%s", digits, e, s, st) else "NA"
+#       }, character(1)), collapse = "\n")
+#     }, character(1))
+#     out[[paste0(grp, "_Est_SE")]] <- estse_txt
+#     out[[grp]] <- paste(rep(" ", 20), collapse = " ")
+#     
+#     meta_list <- lapply(seq_len(nrow(est_mat)), function(j)
+#       meta_one(est_mat[j,], se_mat[j,], method = method, add_pred_int = add_pred_int))
+#     
+#     out[[paste0(grp, "_META_est")]] <- vapply(meta_list, `[[`, numeric(1), "b")
+#     out[[paste0(grp, "_META_low")]] <- vapply(meta_list, `[[`, numeric(1), "lo")
+#     out[[paste0(grp, "_META_hi") ]] <- vapply(meta_list, `[[`, numeric(1), "hi")
+#     out[[paste0(grp, "_META_se") ]] <- vapply(meta_list, `[[`, numeric(1), "se")
+#     
+#     meta_p_vec <- vapply(meta_list, `[[`, numeric(1), "p")
+#     
+#     ## --- NEW: adjust META p-values across terms with BH, if requested ---
+#     if (p_adjust == "BH" && any(is.finite(meta_p_vec))) {
+#       meta_p_vec <- stats::p.adjust(meta_p_vec, method = "BH")
+#     }
+#     out[[paste0(grp, "_META_p")  ]] <- meta_p_vec
+#     
+#     out[[paste0(grp, "_META_I2") ]] <- vapply(meta_list, `[[`, numeric(1), "I2")
+#     out[[paste0(grp, "_META_tau2")]] <- vapply(meta_list, `[[`, numeric(1), "tau2")
+#     if (add_pred_int){
+#       out[[paste0(grp, "_META_pi_low")]] <- vapply(meta_list, `[[`, numeric(1), "pi_lo")
+#       out[[paste0(grp, "_META_pi_hi") ]] <- vapply(meta_list, `[[`, numeric(1), "pi_hi")
+#     }
+#     
+#     meta_stars <- get_sig_stars(out[[paste0(grp, "_META_p")]])
+#     out[[paste0(grp, "_META_Est_SE")]] <-
+#       ifelse(is.finite(out[[paste0(grp, "_META_est")]]) & is.finite(out[[paste0(grp, "_META_se")]]),
+#              sprintf("%+.*f (%.3f)%s",
+#                      digits, out[[paste0(grp, "_META_est")]], out[[paste0(grp, "_META_se")]], meta_stars),
+#              "NA")
+#     
+#     for (i in seq_along(cohorts)){
+#       w_num <- vapply(meta_list, function(x) x$w[i], NA_real_)
+#       out[[paste0(grp, "_", cohorts[i], "_w") ]]  <- w_num
+#       out[[paste0(grp, "_", cohorts[i], "_W%")]] <- ifelse(is.finite(w_num), sprintf("%.1f%%", w_num), "NA")
+#     }
+#   }
+#   
+#   ## Optional: if you also want the adjusted cohort p's exported, uncomment below:
+#   # for (k in seq_along(cohorts)){
+#   #   out[[paste0("AdjP_", cohorts[k])]] <- pv_mat[, k]
+#   # }
+#   
+#   out
+# }
+
+
+make_dt_from_fits <- function(
+    fits,
+    terms,
+    cohorts = c("NACC","AIBL","HABS-HD"),
+    term_labels = NULL,
+    method = "REML",                # "REML" (random-effects) or "FE" (common-effect)
+    digits = 3,
+    add_pred_int = TRUE,
+    p_adjust = c("none","BH")       # controls which p's drive stars and META_p
+){
+  p_adjust <- match.arg(p_adjust)
+  
+  get_sig_stars <- function(p){
+    s <- rep("", length(p))
+    s[is.finite(p) & p < 0.001] <- "***"
+    s[is.finite(p) & p >= 0.001 & p < 0.01] <- "**"
+    s[is.finite(p) & p >= 0.01  & p < 0.05] <- "*"
+    s[is.finite(p) & p >= 0.05  & p <= 0.10] <- "^"
+    s
+  }
+  
+  meta_one <- function(est, se, method="REML", add_pred_int=TRUE){
+    ok <- is.finite(est) & is.finite(se)
+    if (sum(ok) < 2L){
+      return(list(
+        b=NA_real_, se=NA_real_, lo=NA_real_, hi=NA_real_, p=NA_real_,
+        w=rep(NA_real_, length(est)), I2=NA_real_, tau2=NA_real_,
+        pi_lo=NA_real_, pi_hi=NA_real_
+      ))
+    }
+    fit <- metafor::rma.uni(yi = est[ok], sei = se[ok], method = method)
+    ww  <- stats::weights(fit); w <- rep(NA_real_, length(est)); w[ok] <- ww / sum(ww) * 100
+    pi_lo <- pi_hi <- NA_real_
+    if (add_pred_int){
+      pr <- tryCatch(stats::predict(fit), error=function(e) NULL)
+      if (!is.null(pr) && all(c("pi.lb","pi.ub") %in% names(pr))) {
+        pi_lo <- pr$pi.lb; pi_hi <- pr$pi.ub
+      }
+    }
+    list(b=as.numeric(fit$b), se=as.numeric(fit$se), lo=fit$ci.lb, hi=fit$ci.ub, p=fit$pval,
+         w=w, I2=fit$I2, tau2=fit$tau2, pi_lo=pi_lo, pi_hi=pi_hi)
+  }
+  
+  groups <- names(fits)
+  stopifnot(length(groups) > 0)
+  stopifnot(all(vapply(fits, length, 1L) == length(cohorts)))
+  if (is.null(term_labels)) term_labels <- stats::setNames(terms, terms)
+  stopifnot(all(terms %in% names(term_labels)))
+  clean_labels <- paste0("     ", trimws(unname(term_labels[terms])))
+  
+  out <- data.frame(Measurements = clean_labels, stringsAsFactors = FALSE, check.names = FALSE)
+  
+  for (grp in groups){
+    grp_fits <- fits[[grp]]
+    
+    est_mat <- matrix(NA_real_, nrow = length(terms), ncol = length(cohorts),
+                      dimnames = list(terms, cohorts))
+    se_mat  <- est_mat
+    pv_mat  <- est_mat
+    
+    for (i in seq_along(cohorts)){
+      nm <- paste0(grp, "_", cohorts[i])
+      co <- tryCatch(summary(grp_fits[[i]])$coefficients, error=function(e) NULL)
+      
+      est <- se <- low <- hi <- rep(NA_real_, length(terms))
+      names(est) <- names(se) <- names(low) <- names(hi) <- terms
+      
+      if (!is.null(co) && is.matrix(co)){
+        available <- intersect(terms, rownames(co))
+        if (length(available) > 0){
+          est[available] <- co[available, "Estimate"]
+          se [available] <- co[available, "Std. Error"]
+          pv_col <- intersect(colnames(co), c("Pr(>|t|)","Pr(>|z|)","Pr(>|W|)","Pr(>Chisq)"))
+          if (length(pv_col)) pv_mat[available, cohorts[i]] <- co[available, pv_col[1L]]
+        }
+      }
+      ok <- is.finite(est) & is.finite(se)
+      low[ok] <- est[ok] - 1.96 * se[ok]
+      hi [ok] <- est[ok] + 1.96 * se[ok]
+      
+      out[[paste0(nm, "_est")]] <- est
+      out[[paste0(nm, "_low")]] <- low
+      out[[paste0(nm, "_hi") ]] <- hi
+      
+      est_mat[, cohorts[i]] <- est
+      se_mat [, cohorts[i]] <- se
+    }
+    
+    ## raw & BH-adjusted cohort p's
+    pv_mat_raw <- pv_mat
+    pv_mat_adj <- pv_mat
+    for (k in seq_along(cohorts)){
+      colp <- pv_mat_raw[, k]
+      pv_mat_adj[, k] <- if (any(is.finite(colp))) stats::p.adjust(colp, method = "BH") else colp
+    }
+    pv_use <- if (p_adjust == "BH") pv_mat_adj else pv_mat_raw
+    
+    ## stars from chosen p's
+    star_mat <- matrix("", nrow = length(terms), ncol = length(cohorts),
+                       dimnames = list(terms, cohorts))
+    has_p <- is.finite(pv_use)
+    if (any(has_p)) star_mat[has_p] <- get_sig_stars(pv_use[has_p])
+    
+    ## compact text "est (se){stars}" stacked by cohort
+    estse_txt <- vapply(seq_along(terms), function(j){
+      paste(vapply(seq_along(cohorts), function(k){
+        e <- est_mat[j,k]; s <- se_mat[j,k]; st <- star_mat[j,k]
+        if (is.finite(e) && is.finite(s)) sprintf("%+.*f (%.3f)%s", digits, e, s, st) else "NA"
+      }, character(1)), collapse = "\n")
+    }, character(1))
+    out[[paste0(grp, "_Est_SE")]] <- estse_txt
+    out[[grp]] <- paste(rep(" ", 20), collapse = " ")
+    
+    ## meta per-term
+    meta_list <- lapply(seq_len(nrow(est_mat)), function(j)
+      meta_one(est_mat[j,], se_mat[j,], method = method, add_pred_int = add_pred_int))
+    
+    out[[paste0(grp, "_META_est")]] <- vapply(meta_list, `[[`, numeric(1), "b")
+    out[[paste0(grp, "_META_low")]] <- vapply(meta_list, `[[`, numeric(1), "lo")
+    out[[paste0(grp, "_META_hi") ]] <- vapply(meta_list, `[[`, numeric(1), "hi")
+    out[[paste0(grp, "_META_se") ]] <- vapply(meta_list, `[[`, numeric(1), "se")
+    
+    ## META p's (raw & BH-adjusted) + chosen p
+    meta_p_raw <- vapply(meta_list, `[[`, numeric(1), "p")
+    meta_p_adj <- if (any(is.finite(meta_p_raw))) stats::p.adjust(meta_p_raw, method = "BH") else meta_p_raw
+    meta_p_vec <- if (p_adjust == "BH") meta_p_adj else meta_p_raw
+    out[[paste0(grp, "_META_p_raw")]] <- meta_p_raw
+    out[[paste0(grp, "_META_p_adj")]] <- meta_p_adj
+    out[[paste0(grp, "_META_p")    ]] <- meta_p_vec
+    
+    out[[paste0(grp, "_META_I2") ]] <- vapply(meta_list, `[[`, numeric(1), "I2")
+    out[[paste0(grp, "_META_tau2")]] <- vapply(meta_list, `[[`, numeric(1), "tau2")
+    if (add_pred_int){
+      out[[paste0(grp, "_META_pi_low")]] <- vapply(meta_list, `[[`, numeric(1), "pi_lo")
+      out[[paste0(grp, "_META_pi_hi") ]] <- vapply(meta_list, `[[`, numeric(1), "pi_hi")
+    }
+    
+    ## META stars from chosen p
+    meta_stars <- get_sig_stars(out[[paste0(grp, "_META_p")]])
+    out[[paste0(grp, "_META_Est_SE")]] <-
+      ifelse(is.finite(out[[paste0(grp, "_META_est")]]) & is.finite(out[[paste0(grp, "_META_se")]]),
+             sprintf("%+.*f (%.3f)%s",
+                     digits,
+                     out[[paste0(grp, "_META_est")]],
+                     out[[paste0(grp, "_META_se")]],
+                     meta_stars),
+             "NA")
+    
+    ## weights per cohort
+    for (i in seq_along(cohorts)){
+      w_num <- vapply(meta_list, function(x) x$w[i], NA_real_)
+      out[[paste0(grp, "_", cohorts[i], "_w") ]]  <- w_num
+      out[[paste0(grp, "_", cohorts[i], "_W%")]] <- ifelse(is.finite(w_num), sprintf("%.1f%%", w_num), "NA")
+    }
+    
+    ## export cohort p's (raw / adj / chosen) per cohort
+    for (k in seq_along(cohorts)) {
+      co <- cohorts[k]
+      out[[paste0(grp, "_", co, "_p_raw")]] <- pv_mat_raw[, k]
+      out[[paste0(grp, "_", co, "_p_adj")]] <- pv_mat_adj[, k]
+      out[[paste0(grp, "_", co, "_p")    ]] <- pv_use[, k]
+    }
+  }
+  
   out
 }
+
+
 
 create_forest_data <- function(dt_, groups, add_gutter = TRUE, gutter_label = " ") {
   forest_dt <- data.frame(Measurements = dt_$Measurements, stringsAsFactors = FALSE)
@@ -571,7 +848,9 @@ create_multi_group_forest <- function(
     cohort_colors = c("#DAA87C","#92A5D1","#C9DCC4"),
     cohort_shapes = c(15,16,18),
     filename = NULL, width = NULL, height = NULL,
-    row_padding_mm = 10, xlim_fixed = c(-0.5, 0.5),
+    row_padding_mm = 10, 
+    # xlim_fixed = c(-0.5, 0.5),
+    xlim_per_group = NULL,  # NEW: list or named list with xlims per group
     cohort_nudge = 0.35, point_size = 0.6, line_width = 1.6,
     gutter = TRUE, gutter_width = 0.04,         # <<< control the inter-group gap here
     first_col_width = 0.40, est_frac = 0.22, ci_frac = 0.16
@@ -597,15 +876,31 @@ create_multi_group_forest <- function(
   first_ci_col <- 1 + 2                               # Measurements=1; Est is +1; CI is +2
   ci_columns <- first_ci_col + (0:(length(groups)-1)) * chunk
   
-  ## X-axis (fixed)
-  xlim_use <- xlim_fixed
+  # ## X-axis (fixed)
+  # xlim_use <- xlim_fixed
+  ## NEW: Handle xlim_per_group
+  # Convert to list format if needed
+  if (is.null(xlim_per_group)) {
+    # Default: same range for all groups
+    xlim_use <- rep(list(c(-0.5, 0.5)), length(groups))
+  } else if (is.list(xlim_per_group) && !is.null(names(xlim_per_group))) {
+    # Named list: extract in order of groups
+    xlim_use <- lapply(groups, function(g) {
+      if (g %in% names(xlim_per_group)) xlim_per_group[[g]] else c(-0.5, 0.5)
+    })
+  } else if (is.list(xlim_per_group) && length(xlim_per_group) == length(groups)) {
+    # Unnamed list: use as-is (assumed to match groups order)
+    xlim_use <- xlim_per_group
+  } else {
+    stop("xlim_per_group must be NULL, a named list with group names, or a list of length equal to number of groups")
+  }
   
   ## Column widths: [Measurements] + per-group (Est, CI, [spacer])
   per_group <- if (gutter) c(est_frac, ci_frac, gutter_width) else c(est_frac, ci_frac)
   col_w <- c(first_col_width, rep(per_group, length(groups)))
   
   tm <- forest_theme(
-    base_size = 10,
+    base_size = 11,
     refline_gp = gpar(lty = "dotted", col = "grey70", lwd = 1.1),
     ci_pch = cohort_shapes, ci_col = cohort_colors, ci_lwd = line_width,
     legend_name = "Cohort", legend_value = cohorts,
@@ -616,7 +911,7 @@ create_multi_group_forest <- function(
     colwidth = col_w
   )
   
-  p <- forest(
+  p <- forestploter::forest(
     forest_dt,
     est = est_list, lower = lower_list, upper = upper_list,
     ci_column = ci_columns,
@@ -635,7 +930,7 @@ create_multi_group_forest <- function(
 plot_forest_subset <- function(
     fits, terms,
     groups  = c("Full","Female","Male","APOE4pos","APOE4neg"),
-    cohorts = c("NACC","AIBL","HABS"),
+    cohorts = c("NACC","AIBL","HABS-HD"),
     term_labels = NULL,
     title = "",
     filename = NULL, width = NULL, height = NULL,
@@ -644,7 +939,8 @@ plot_forest_subset <- function(
     cohort_colors = c("#DAA87C","#92A5D1","#C9DCC4"),
     cohort_shapes = c(15,16,18),
     row_padding_mm = 10,
-    xlim_fixed = c(-0.5, 0.5),
+    # xlim_fixed = c(-0.5, 0.5),
+    xlim_per_group = NULL,  # NEW: replaces xlim_fixed
     cohort_nudge = 0.35,
     point_size = 0.6,
     line_width = 1.6,
@@ -656,13 +952,42 @@ plot_forest_subset <- function(
 ){
   fits_subset <- fits[names(fits) %in% groups]
   fits_subset <- fits_subset[groups]
-  dt_ <- make_dt_from_fits(fits_subset, terms, term_labels = term_labels)
+  dt_ <- make_dt_from_fits(fits_subset, terms, cohorts = cohorts, term_labels = term_labels)
   
   create_multi_group_forest(
     dt_, groups = groups, cohorts = cohorts,
     ref_line = ref_line, title = title,
     cohort_colors = cohort_colors, cohort_shapes = cohort_shapes,
     filename = filename, width = width, height = height,
+    row_padding_mm = row_padding_mm, 
+    # xlim_fixed = xlim_fixed,
+    xlim_per_group = xlim_per_group,  # NEW
+    cohort_nudge = cohort_nudge, point_size = point_size, line_width = line_width,
+    gutter = gutter, gutter_width = gutter_width,
+    first_col_width = first_col_width, est_frac = est_frac, ci_frac = ci_frac
+  )
+}
+
+plot_forest_single_cohort <- function(
+    fits, terms, cohort = "NACC",
+    groups  = c("Full","Female","Male","APOE4pos","APOE4neg"),
+    term_labels = NULL, title = "",
+    filename = NULL, width = NULL, height = NULL,
+    ref_line = 0, cohort_color = "#92A5D1", cohort_shape = 16,
+    row_padding_mm = 10, 
+    # xlim_fixed = c(-0.5, 0.5),
+    xlim_per_group = NULL,  # NEW: replaces xlim_fixed
+    cohort_nudge = 0.35, point_size = 0.6, line_width = 1.6,
+    gutter = TRUE, gutter_width = 0.04,
+    first_col_width = 0.40, est_frac = 0.22, ci_frac = 0.16
+){
+  # reuse your existing pipeline, but restrict cohorts to the single choice
+  plot_forest_subset(
+    fits = fits, terms = terms, groups = groups,
+    cohorts = c(cohort), term_labels = term_labels, title = title,
+    filename = filename, width = width, height = height,
+    ref_line = ref_line,
+    cohort_colors = c(cohort_color), cohort_shapes = c(cohort_shape),
     row_padding_mm = row_padding_mm, xlim_fixed = xlim_fixed,
     cohort_nudge = cohort_nudge, point_size = point_size, line_width = line_width,
     gutter = gutter, gutter_width = gutter_width,
@@ -670,33 +995,299 @@ plot_forest_subset <- function(
   )
 }
 
-
-######### drug proportion
-available_meds <- function(df, med_cols) {
-  keep <- intersect(med_cols, names(df))
-  if (!length(keep)) stop("None of the specified med_cols were found.")
-  keep
+###### add for meta analysis
+# 1) Expand each Measurement into 4 sub-rows (NACC, AIBL, HABS, Meta)
+#    NO gap rows - spacing handled by row_padding_mm
+expand_dt_with_meta_rows <- function(dt_, groups,
+                                     cohorts = c("NACC","AIBL","HABS-HD"),
+                                     meta_label = "Meta",
+                                     add_block_gap = FALSE){
+  K <- 4L
+  order4 <- c(cohorts, meta_label)
+  out <- vector("list", nrow(dt_) * K); k <- 0L
+  
+  for (i in seq_len(nrow(dt_))){
+    ## 4 cohort/meta rows
+    for (j in seq_along(order4)){
+      co <- order4[j]; k <- k + 1L
+      # Measurement label ONCE (first sub-row of the block)
+      lab <- if (j == 1L) dt_$Measurements[i] else " "
+      row <- list(Measurements = lab, .__cohort__ = co)
+      
+      for (g in groups){
+        if (co == meta_label){
+          e  <- dt_[[paste0(g,"_META_est")]][i]
+          se <- dt_[[paste0(g,"_META_se")]][i]
+          stars <- sub("^[^)]*\\)", "", dt_[[paste0(g,"_META_Est_SE")]][i])
+          row[[paste0(g,"__EST")]] <- if (is.finite(e) && is.finite(se)) sprintf("%+.3f (%.3f)%s", e, se, stars) else "NA"
+          row[[paste0(g,"__",co,"_W")]]   <- if (is.finite(e)) "100%" else "NA"
+          row[[paste0(g,"__",co,"_est")]] <- e
+          row[[paste0(g,"__",co,"_low")]] <- dt_[[paste0(g,"_META_low")]][i]
+          row[[paste0(g,"__",co,"_hi") ]] <- dt_[[paste0(g,"_META_hi") ]][i]
+        } else {
+          e <- dt_[[paste0(g,"_",co,"_est")]][i]
+          lines <- strsplit(dt_[[paste0(g,"_Est_SE")]][i], "\n", fixed = TRUE)[[1]]
+          idx <- match(co, cohorts)
+          row[[paste0(g,"__EST")]] <- if (!is.na(idx) && idx <= length(lines)) lines[idx] else if (is.finite(e)) sprintf("%+.3f (NA)", e) else "NA"
+          row[[paste0(g,"__",co,"_W")]]   <- dt_[[paste0(g,"_",co,"_W%")]][i]
+          row[[paste0(g,"__",co,"_est")]] <- e
+          row[[paste0(g,"__",co,"_low")]] <- dt_[[paste0(g,"_",co,"_low")]][i]
+          row[[paste0(g,"__",co,"_hi") ]] <- dt_[[paste0(g,"_",co,"_hi") ]][i]
+        }
+        row[[paste0(g,"__CI")]] <- " "
+      }
+      out[[k]] <- row
+    }
+  }
+  
+  df <- dplyr::bind_rows(out)
+  rownames(df) <- NULL
+  df
 }
 
-normalize_meds <- function(df, meds) {
-  df %>% mutate(across(all_of(meds), ~ as.numeric(replace(., is.na(.), 0))))
+# 2) Build forest table: per-group = Est | Weight | CI | (Spacer)
+#    Group name ONLY in Estimate column header
+create_forest_table_expanded <- function(exp_dt, groups, add_gutter = TRUE, ci_spaces = 60){
+  forest_dt <- data.frame(Measurements = exp_dt$Measurements, check.names = FALSE, stringsAsFactors = FALSE)
+  hdr <- c("Measurements")
+  
+  # a long run of spaces reserves horizontal room for the CI panel
+  ci_pad <- strrep(" ", ci_spaces)
+  
+  for (g in groups){
+    forest_dt[[paste0(g,"__ESTCOL")]] <- exp_dt[[paste0(g,"__EST")]]
+    forest_dt[[paste0(g,"__WC")]]     <- vapply(seq_len(nrow(exp_dt)), function(i){
+      co <- exp_dt$.__cohort__[i]
+      v  <- exp_dt[[paste0(g,"__", co, "_W")]][i]
+      if (is.null(v) || is.na(v) || !nzchar(v)) "NA" else as.character(v)
+    }, character(1))
+    
+    # force a *wide* blank CI column using spaces
+    forest_dt[[paste0(g,"__CIC")]] <- ci_pad
+    
+    if (add_gutter) forest_dt[[paste0(g,"__SP")]] <- " "
+    
+    # headers
+    hdr <- c(hdr,
+             paste(g, "Estimate (SE)", sep = "\n"),
+             "Weight",
+             "",                    # CI plot has no header
+             if (add_gutter) "")
+  }
+  names(forest_dt) <- hdr
+  forest_dt
 }
 
-tag_dataset <- function(df, label, meds) {
-  if (is.null(df) || nrow(df) == 0) return(tibble())
-  meds_in_data <- available_meds(df, meds)
-  df %>%
-    select(any_of(c("id")), all_of(meds_in_data)) %>%
-    mutate(dataset = label) %>%
-    relocate(dataset, id) %>%
-    normalize_meds(meds_in_data)
+# 3) Plot (expanded rows): fixed widths, narrower rows, per-block bg
+# NO gap rows - cleaner alternating backgrounds
+plot_forest_expanded <- function(
+    dt_, groups, cohorts = c("NACC","AIBL","HABS-HD"),
+    IF_META_ANALYSIS = TRUE, meta_label = "Meta",
+    title = "", filename = NULL, width = NULL, height = NULL,
+    ref_line = 0, 
+    # xlim_fixed = c(-0.8, 0.8),
+    xlim_per_group = NULL,  # NEW: replaces xlim_fixed
+    # point styles
+    cohort_colors = c("#DAA87C","#92A5D1","#C9DCC4"), cohort_shapes = c(15,16,18),
+    meta_color = "#000000", meta_shape = 17,
+    # tighter rows
+    row_padding_mm = 4, lineheight_txt = 0.96,
+    # symbol sizing
+    point_size = 0.85, line_width = 2.2,
+    # column widths - ABSOLUTE widths in inches
+    add_gutter = TRUE, gutter_width = 0.5,
+    first_col_width = 3.5,   # Measurements column in inches
+    est_frac = 2.5,          # Estimate column in inches
+    wgt_frac = 1.5,          # Weight column in inches
+    ci_frac = 8.0,           # CI plot in inches (WIDE!)
+    # background fill per 4-row block
+    block_col1 = "#C9DCC4", block_col2 = "#FFFFFF"){
+  
+  stopifnot(requireNamespace("forestploter", quietly = TRUE))
+  stopifnot(requireNamespace("grid", quietly = TRUE))
+  
+  cohorts2 <- if (IF_META_ANALYSIS) c(cohorts, meta_label) else cohorts
+  cols2    <- if (IF_META_ANALYSIS) c(cohort_colors, meta_color) else cohort_colors
+  pchs2    <- if (IF_META_ANALYSIS) c(cohort_shapes, meta_shape) else cohort_shapes
+  
+  # expand rows (4 per measurement, NO gap row) and build table
+  exp_dt    <- expand_dt_with_meta_rows(dt_, groups, cohorts = cohorts, meta_label = meta_label, add_block_gap = FALSE)
+  forest_dt <- create_forest_table_expanded(exp_dt, groups, add_gutter = add_gutter)
+  
+  # series: one per (cohort × group); values only on that cohort's rows
+  est_list <- lower_list <- upper_list <- list()
+  add_na <- function(x) if (is.null(x)) rep(NA_real_, nrow(exp_dt)) else x
+  row_co <- exp_dt$.__cohort__
+  
+  for (co in cohorts2){
+    sel <- row_co == co
+    for (g in groups){
+      e  <- add_na(exp_dt[[paste0(g,"__",co,"_est")]]); e[!sel]  <- NA_real_
+      lo <- add_na(exp_dt[[paste0(g,"__",co,"_low")]]); lo[!sel] <- NA_real_
+      hi <- add_na(exp_dt[[paste0(g,"__",co,"_hi") ]]); hi[!sel] <- NA_real_
+      est_list   <- c(est_list,   list(e))
+      lower_list <- c(lower_list, list(lo))
+      upper_list <- c(upper_list, list(hi))
+    }
+  }
+  
+  # CI columns: per-group chunk = Est, Weight, CI, (Spacer)
+  chunk <- if (add_gutter) 4L else 3L
+  ci_columns <- (2 + (seq_along(groups)-1L)*chunk) + 2L
+  
+  ## NEW: Handle xlim_per_group
+  if (is.null(xlim_per_group)) {
+    # Default: same range for all groups
+    xlim_use <- rep(list(c(-0.8, 0.8)), length(groups))
+  } else if (is.list(xlim_per_group) && !is.null(names(xlim_per_group))) {
+    # Named list: extract in order of groups
+    xlim_use <- lapply(groups, function(g) {
+      if (g %in% names(xlim_per_group)) xlim_per_group[[g]] else c(-0.8, 0.8)
+    })
+  } else if (is.list(xlim_per_group) && length(xlim_per_group) == length(groups)) {
+    # Unnamed list: use as-is (assumed to match groups order)
+    xlim_use <- xlim_per_group
+  } else {
+    stop("xlim_per_group must be NULL, a named list with group names, or a list of length equal to number of groups")
+  }
+  
+  # Use grid::unit() for column widths
+  per_group <- if (add_gutter) c(est_frac, wgt_frac, ci_frac, gutter_width) else c(est_frac, wgt_frac, ci_frac)
+  col_w <- grid::unit(c(first_col_width, rep(per_group, length(groups))), "inches")
+  
+  tm <- forestploter::forest_theme(
+    base_size  = 12,
+    refline_gp = grid::gpar(lty = "dotted", col = "grey70", lwd = 1.1),
+    ci_pch     = pchs2, ci_col = cols2, ci_lwd = line_width,
+    legend_name  = " ", legend_value = cohorts2,
+    core = list(
+      fg_params = list(hjust = rep(0, ncol(forest_dt)),
+                       x = rep(0.01, ncol(forest_dt)),
+                       lineheight = lineheight_txt),
+      padding   = grid::unit(c(row_padding_mm, row_padding_mm), "mm")
+    ),
+    colwidth = col_w
+  )
+  
+  p <- forestploter::forest(
+    forest_dt,
+    est   = est_list, lower = lower_list, upper = upper_list,
+    ci_column = ci_columns,
+    ref_line  = ref_line, 
+    xlim = xlim_use,  # NEW: pass list of xlims
+    # xlim = xlim_fixed,
+    nudge_y   = 0, sizes = point_size, theme = tm, title = title,
+    arrow_lab = c("Decrease","Increase"),
+    indent = rep(0, nrow(forest_dt))
+  )
+  
+  
+  ## Bold significant cells in the printed table
+  for (g in groups){
+    col_idx  <- which(names(forest_dt) == paste(g, "Estimate (SE)", sep = "\n"))
+    sig_rows <- which(grepl("\\*|\\^", exp_dt[[paste0(g,"__EST")]]))
+    if (length(sig_rows)) p <- forestploter::edit_plot(p, row = sig_rows, col = col_idx, which="text", gp=grid::gpar(fontface="bold"))
+  }
+  
+  p <- forestploter::edit_plot(p, row=1, col=seq_len(ncol(forest_dt)), which="text", y=grid::unit(0.5,"npc"), vjust=0.5)
+  
+  # Bold the (single) Measurement labels (top row of each block)
+  p <- forestploter::edit_plot(
+    p, row = which(forest_dt$Measurements != " "),
+    col = 1, gp = grid::gpar(fontface = "bold")
+  )
+  
+  # ---- Per-block background (each 4-row block) ----
+  step <- 4L                           # 4 cohort rows (no gap)
+  block_starts <- seq(1, nrow(forest_dt), by = step)
+  for (i in block_starts){
+    fill_col <- if ((((i-1)/step) %% 2) == 0) block_col1 else block_col2
+    p <- forestploter::edit_plot(
+      p, row = i:(i+3), which = "background",
+      gp = grid::gpar(fill = fill_col, col = NA)
+    )
+  }
+  
+  if (!is.null(filename)) {
+    # grDevices::pdf(filename, width = width, height = height)
+    grDevices::cairo_pdf(filename, width = width, height = height, family = "Arial")
+    plot(p);
+    grDevices::dev.off()
+  }
+  
+  invisible(p)
+}
+
+
+plot_forest_subset_meta_expanded <- function(
+    fits, terms,
+    groups  = c("Full","Female","Male","APOE4 carriers","APOE4 non-carriers"),
+    cohorts = c("NACC","AIBL","HABS-HD"),
+    term_labels = NULL, title = "",
+    filename = NULL, width = NULL, height = NULL,
+    # layout / styling knobs
+    ref_line = 0, 
+    # xlim_fixed = c(-0.8, 0.8),
+    xlim_per_group = NULL,  # NEW: replaces xlim_fixed
+    cohort_colors = c("#DAA87C", "#92A5D1", "#C9DCC4"),
+    cohort_shapes = c(15, 16, 18),
+    IF_META_ANALYSIS = TRUE, meta_label = "Meta", meta_color = "#000000", meta_shape = 17,
+    row_padding_mm = 4, lineheight_txt = 0.96,
+    point_size = 0.85, line_width = 2.2,
+    add_gutter = TRUE, gutter_width = 0.5,
+    first_col_width = 3.5, est_frac = 2.5, wgt_frac = 1.5, ci_frac = 8.0,
+    block_col1 = "#f8f1ff", block_col2 = "#FFFFFF",
+    p_adjust = c("none","BH"),              # keep passing through to make_dt_from_fits
+    feature_subset = NULL                   # NEW: plot only these features (terms)
+){
+  stopifnot(all(vapply(fits, length, 1L) == length(cohorts)))
+  fits_subset <- fits[names(fits) %in% groups]; fits_subset <- fits_subset[groups]
+  
+  # ## --- NEW: choose which terms to plot, preserving original order ---
+  # terms_use <- terms
+  # if (!is.null(feature_subset)) {
+  #   miss <- setdiff(feature_subset, terms)
+  #   if (length(miss)) warning("These requested features are not in 'terms': ", paste(miss, collapse=", "))
+  #   terms_use <- intersect(terms, feature_subset)
+  #   if (!length(terms_use)) stop("No overlap between 'feature_subset' and 'terms'.")
+  # }
+  
+  dt_full <- make_dt_from_fits(
+    fits_subset, terms,
+    cohorts = cohorts, term_labels = term_labels,
+    method = "REML", add_pred_int = TRUE, p_adjust = p_adjust
+  )
+  
+  ## now subset rows for plotting only (preserve original order in `terms`)
+  if (!is.null(feature_subset)) {
+    miss <- setdiff(feature_subset, terms)
+    if (length(miss)) warning("These requested features are not in 'terms': ", paste(miss, collapse=", "))
+    keep_idx <- which(terms %in% feature_subset)
+    if (!length(keep_idx)) stop("No overlap between 'feature_subset' and 'terms'.")
+    dt_ <- dt_full[keep_idx, , drop = FALSE]
+  } else {
+    dt_ <- dt_full
+  }
+  
+  plot_forest_expanded(
+    dt_, groups = groups, cohorts = cohorts,
+    IF_META_ANALYSIS = IF_META_ANALYSIS, meta_label = meta_label,
+    title = title, filename = filename, width = width, height = height,
+    ref_line = ref_line, 
+    xlim_per_group = xlim_per_group,  # NEW
+    # xlim_fixed = xlim_fixed,
+    cohort_colors = cohort_colors, cohort_shapes = cohort_shapes,
+    meta_color = meta_color, meta_shape = meta_shape,
+    row_padding_mm = row_padding_mm, lineheight_txt = lineheight_txt,
+    point_size = point_size, line_width = line_width,
+    add_gutter = add_gutter, gutter_width = gutter_width,
+    first_col_width = first_col_width, est_frac = est_frac, wgt_frac = wgt_frac, ci_frac = ci_frac,
+    block_col1 = block_col1, block_col2 = block_col2
+  )
 }
 
 
 ###### drug proportion ######
-
-
-
 available_meds <- function(df, med_cols) {
   keep <- intersect(med_cols, names(df))
   if (!length(keep)) stop("None of the specified med_cols were found.")
@@ -744,7 +1335,7 @@ make_prop_table_baseline <- function(baseline_df, meds) {
 # Plot (keeps med_cols order top->bottom; "Any medication" is last)
 plot_baseline_props <- function(prop_df,
                                 meds_order,
-                                dataset_order = c("AIBL","HABS","NACC"),
+                                dataset_order = c("AIBL","HABS-HD","NACC"),
                                 show_only_any = FALSE,
                                 fill_values = c("Yes" = "#2C7BB6", "No" = "#BDBDBD"),
                                 add_borders = FALSE,
@@ -765,9 +1356,10 @@ plot_baseline_props <- function(prop_df,
     ggplot2::geom_col(position = "fill",
                       color = if (add_borders) "white" else NA,
                       linewidth = 0.2) +
-    ggplot2::scale_fill_manual(values = fill_values, drop = FALSE) +
+    # ggplot2::scale_fill_manual(values = fill_values, drop = FALSE) +
+    ggplot2::scale_fill_manual(values = fill_values, labels = c(Yes = "User", No = "Non-user"), name = NULL, drop = FALSE)+
     ggplot2::scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-    ggplot2::labs(x = NULL, y = "Proportion of participants", fill = "Has medication",
+    ggplot2::labs(x = NULL, y = "Proportion of participants", fill = " ",
                   title = " ", subtitle = " ") +
     ggplot2::facet_wrap(~ dataset, nrow = 1) +
     ggplot2::coord_flip() +
@@ -794,14 +1386,14 @@ baseline_props_to_pdf <- function(
     out_pdf = "../plots/heatmap/MMSE_baselineMed_pvalue_heatmap_groups.pdf",
     width = 10, height = 5,
     med_cols = c("ACEi","ARB","BetaBlk","CCB","Diuretic","Metformin","Statin"),
-    dataset_order = c("NACC","AIBL","HABS"),
+    dataset_order = c("NACC","AIBL","HABS-HD"),
     show_only_any = FALSE,
     fill_values = c("Yes" = "#2C7BB6", "No" = "#BDBDBD"),
     add_borders = FALSE,
     text_size = 9) {
   
   aibl_b <- tag_dataset(AIBL_df, "AIBL", med_cols)
-  habs_b <- tag_dataset(HABS_df, "HABS", med_cols)
+  habs_b <- tag_dataset(HABS_df, "HABS-HD", med_cols)
   nacc_b <- tag_dataset(NACC_df, "NACC", med_cols)
   baseline_all <- dplyr::bind_rows(aibl_b, habs_b, nacc_b)
   
@@ -817,11 +1409,15 @@ baseline_props_to_pdf <- function(
     add_borders = add_borders,
     text_size = text_size
   )
+  p + theme(plot.subtitle = element_text(size = 30), legend.text = element_text(size=20), legend.key.size = grid::unit(4,"mm"))
+  p <- p + theme(strip.text.x = element_text(size = 14, face = "bold"))
+  # p + scale_fill_manual(values=fill_values, labels=c("Yes"="User","No"="Non-user"), name=NULL)
   
   out_dir <- dirname(out_pdf)
   if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
   
-  grDevices::pdf(out_pdf, width = width, height = height)
+  # grDevices::pdf(out_pdf, width = width, height = height)
+  grDevices::cairo_pdf(out_pdf, width = width, height = height, family = "Arial")
   on.exit(grDevices::dev.off(), add = TRUE)
   print(p)
   
@@ -833,7 +1429,7 @@ baseline_props_to_pdf <- function(
 baseline_props_table <- function(
     NACC_df, AIBL_df, HABS_df,
     med_cols = c("ACEi","ARB","BetaBlk","CCB","Diuretic","Statin","Metformin"),
-    dataset_order = c("AIBL","HABS","NACC"),
+    dataset_order = c("AIBL","HABS-HD","NACC"),
     include_individual_meds = TRUE,
     include_any_med = TRUE,
     digits = 1,
@@ -842,7 +1438,7 @@ baseline_props_table <- function(
   stopifnot(include_individual_meds || include_any_med)
   
   aibl_b <- tag_dataset(AIBL_df, "AIBL", med_cols)
-  habs_b <- tag_dataset(HABS_df, "HABS", med_cols)
+  habs_b <- tag_dataset(HABS_df, "HABS-HD", med_cols)
   nacc_b <- tag_dataset(NACC_df, "NACC", med_cols)
   baseline_all <- dplyr::bind_rows(aibl_b, habs_b, nacc_b)
   
@@ -935,7 +1531,7 @@ tag_dataset_long <- function(df, label, med_cols) {
 plot_med_prevalence_by_age_smooth_multi <- function(
     NACC_df, AIBL_df, HABS_df,
     med_cols       = c("ACEi","ARB","BetaBlk","CCB","Diuretic","Statin","Metformin"),
-    dataset_order  = c("NACC","AIBL","HABS"),
+    dataset_order  = c("NACC","AIBL","HABS-HD"),
     include_any_med = TRUE,
     show_ci         = FALSE,
     text_size       = 8,
@@ -949,7 +1545,7 @@ plot_med_prevalence_by_age_smooth_multi <- function(
 ){
   # combine labeled baselines
   aibl_b <- tag_dataset(AIBL_df, "AIBL", med_cols)
-  habs_b <- tag_dataset(HABS_df, "HABS", med_cols)
+  habs_b <- tag_dataset(HABS_df, "HABS-HD", med_cols)
   nacc_b <- tag_dataset(NACC_df, "NACC", med_cols)
   df <- dplyr::bind_rows(aibl_b, habs_b, nacc_b)
   if (!"age" %in% names(df)) stop("Age column not found. Please include an 'age' column in each df.")
@@ -1032,7 +1628,8 @@ plot_med_prevalence_by_age_smooth_multi <- function(
       else ggplot2::element_blank(),
       panel.spacing = grid::unit(6, "pt")
     )
-  
+  p <- p + theme(plot.subtitle = element_text(size = 12), legend.text = element_text(size = 12), text = element_text(size = 12))
+  p <- p + theme(strip.text.x = element_text(size = 14, face = "bold"))
   return(p)
 }
 
@@ -1040,7 +1637,7 @@ plot_med_prevalence_by_age_smooth_multi <- function(
 plot_attained_age_prevalence_multi <- function(
     NACC_long, AIBL_long, HABS_long,
     med_cols       = c("ACEi","ARB","BetaBlk","CCB","Diuretic","Statin","Metformin"),
-    dataset_order  = c("AIBL","HABS","NACC"),
+    dataset_order  = c("AIBL","HABS-HD","NACC"),
     include_any_med = TRUE,
     show_ci         = FALSE,
     text_size       = 8,
@@ -1054,7 +1651,7 @@ plot_attained_age_prevalence_multi <- function(
 ){
   # stack visit-level with tags
   aibl_v <- tag_dataset_long(AIBL_long, "AIBL", med_cols)
-  habs_v <- tag_dataset_long(HABS_long, "HABS", med_cols)
+  habs_v <- tag_dataset_long(HABS_long, "HABS-HD", med_cols)
   nacc_v <- tag_dataset_long(NACC_long, "NACC", med_cols)
   df <- dplyr::bind_rows(aibl_v, habs_v, nacc_v)
   
@@ -1135,7 +1732,8 @@ plot_attained_age_prevalence_multi <- function(
       else ggplot2::element_blank(),
       panel.spacing = grid::unit(6, "pt")
     )
-  
+  p <- p + theme(plot.subtitle = element_text(size = 12), legend.text = element_text(size = 12), text = element_text(size = 12))
+  p <- p + theme(strip.text.x = element_text(size = 14, face = "bold"))
   return(p)
 }
 
@@ -1392,7 +1990,7 @@ suppressPackageStartupMessages({
 plot_med_corr_by_cohort <- function(
     NACC_df, AIBL_df, HABS_df,
     med_cols = c("ACEi","ARB","BetaBlk","CCB","Diuretic","Metformin","Statin"),
-    dataset_order = c("NACC","AIBL","HABS"),
+    dataset_order = c("NACC","AIBL","HABS-HD"),
     method = c("pearson","tetrachoric"),
     mask_upper_triangle = FALSE,
     # colour control (scale_fill_gradient2)
@@ -1422,7 +2020,7 @@ plot_med_corr_by_cohort <- function(
   cohorts <- list(
     "NACC" = make_binary_subset(NACC_df, med_cols),
     "AIBL" = make_binary_subset(AIBL_df, med_cols),
-    "HABS" = make_binary_subset(HABS_df, med_cols)
+    "HABS-HD" = make_binary_subset(HABS_df, med_cols)
   )
   
   res_list <- purrr::imap(cohorts, function(dat, nm) {

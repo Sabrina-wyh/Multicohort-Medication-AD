@@ -889,6 +889,51 @@ def baseline_age_by_med(df, med_cols, age_col='age', id_col='id', visit_col='vis
     out = out.merge(wald_df, on='drug', how='left')
     return out[['drug','user','n','mean','sd','mean_sd','wald_chi2','wald_p']]
 
+def age_difference_by_med(df, med_cols, age_col='age', id_col='id', visit_col='visit_no'):
+    # Get baseline data (visit 1 only)
+    base = (df.loc[df[visit_col].eq(1), [id_col, age_col] + med_cols]
+              .sort_values(id_col).drop_duplicates(subset=id_col, keep='first'))
+    
+    # Convert to long format
+    long = base.melt(id_vars=[id_col, age_col], value_name='user', var_name='drug')
+    long['user'] = pd.to_numeric(long['user'], errors='coerce').astype('Int64')
+    long = long.dropna(subset=[age_col, 'user'])
+    
+    # Calculate mean age for users and non-users per drug
+    age_stats = (long.groupby(['drug', 'user'])[age_col]
+                     .mean()
+                     .reset_index()
+                     .pivot(index='drug', columns='user', values=age_col))
+    
+    # Calculate difference (user - non-user) and SD of the difference
+    def calc_diff_stats(g):
+        users = g[g['user'] == 1][age_col]
+        non_users = g[g['user'] == 0][age_col]
+        
+        if len(users) == 0 or len(non_users) == 0:
+            return pd.Series({'diff_mean': np.nan, 'diff_sd': np.nan})
+        
+        # Mean difference
+        diff_mean = users.mean() - non_users.mean()
+        
+        # Pooled SD or SD of differences (using pooled here)
+        n1, n2 = len(users), len(non_users)
+        s1, s2 = users.std(), non_users.std()
+        pooled_sd = np.sqrt(((n1 - 1) * s1**2 + (n2 - 1) * s2**2) / (n1 + n2 - 2))
+        
+        return pd.Series({'diff_mean': diff_mean, 'diff_sd': pooled_sd})
+    
+    diff_stats = long.groupby('drug').apply(calc_diff_stats).reset_index()
+    
+    # Round and format
+    diff_stats[['diff_mean', 'diff_sd']] = diff_stats[['diff_mean', 'diff_sd']].round(2)
+    diff_stats['mean_sd'] = diff_stats.apply(
+        lambda r: f"{r['diff_mean']} ({r['diff_sd']})" if pd.notna(r['diff_mean']) else np.nan, 
+        axis=1
+    )
+    
+    return diff_stats[['drug', 'mean_sd']]
+
 
 def qc(df, col, id_col='id', visit_col='visit_no', baseline_no=1):
     total_rows = len(df)

@@ -23,157 +23,8 @@ source("plots.R")
 
 ```{r}
 med_cols<-c("ACEi","ARB","BetaBlk","CCB","Diuretic","Statin","Metformin")
+med_cols_rename <-c("ACEi","ARBs","β-Blocker","CCBs","Diuretics","Statins","Metformin")
 ```
-
-```{r}
-NACC_full_df_mmse_imputed<-read.csv("../preprocessed_data/NACC/NACC_mmse_imputed_binary.csv")
-AIBL_full_df_mmse_imputed<-read.csv("../preprocessed_data/AIBL/AIBL_mmse_imputed_binary.csv")
-HABS_full_df_mmse_imputed<-read.csv("../preprocessed_data/HABSHD/HABSHD_mmse_imputed_binary.csv")
-```
-
-################## MMSE Baseline medicaton#############
-```{r}
-AIBL_full_df_mmse_imputed_baseline <- make_participant_summary(
-  df            = AIBL_full_df_mmse_imputed,
-  id_col        = "id",
-  time_col      = "months_since_baseline",
-  visit_col     = "visit_no",   # or NULL if absent
-  dataset_col   = NULL,         # <- optional
-  value_col     = "MMSE",
-  out_col       = "dMMSE_per_year",
-  med_cols      = med_cols,
-  demo_cols     = c("age","sex","APOE4","status"),
-  collapse_mode = "baseline"
-)
-
-NACC_full_df_mmse_imputed_baseline <- make_participant_summary(
-  df            = NACC_full_df_mmse_imputed,
-  id_col        = "id",
-  time_col      = "months_since_baseline",
-  visit_col     = "visit_no",   # or NULL if absent
-  dataset_col   = NULL,         # <- optional
-  value_col     = "MMSE",
-  out_col       = "dMMSE_per_year",
-  med_cols      = med_cols,
-  demo_cols     = c("age","sex","APOE4","status"),
-  collapse_mode = "baseline"
-)
-
-HABS_full_df_mmse_imputed_baseline <- make_participant_summary(
-  df            = HABS_full_df_mmse_imputed,
-  id_col        = "id",
-  time_col      = "months_since_baseline",
-  visit_col     = "visit_no",   # or NULL if absent
-  dataset_col   = NULL,         # <- optional
-  value_col     = "MMSE",
-  out_col       = "dMMSE_per_year",
-  med_cols      = med_cols,
-  demo_cols     = c("age","sex","APOE4","status"),
-  collapse_mode = "baseline"
-)
-```
-
-Medication exposure proportions at Baseline
-Composite ‘Any medication’ = participant has ≥1 of the meds
-```{r}
-res <- baseline_props_to_pdf(
-  NACC_df = NACC_full_df_mmse_imputed_baseline,
-  AIBL_df = AIBL_full_df_mmse_imputed_baseline,
-  HABS_df = HABS_full_df_mmse_imputed_baseline,
-  out_pdf = "../plots/drug_usage/MMSE_baseline_drug_usage.pdf",
-  width = 11, height = 4.2,     # absolute inches
-  fill_values = c("Yes" = "#67a8cd", "No" = "#E68B81"),
-  add_borders = TRUE,
-  text_size = 8                  # smaller overall text
-)
-```
-
-```{r}
-baseline_table <- baseline_props_table(
-  NACC_df = NACC_full_df_mmse_imputed_baseline,
-  AIBL_df = AIBL_full_df_mmse_imputed_baseline,
-  HABS_df = HABS_full_df_mmse_imputed_baseline,
-  dataset_order = c("NACC","AIBL","HABS"),
-  include_individual_meds = TRUE,
-  include_any_med = TRUE,
-  digits = 1
-)
-print(baseline_table)
-```
-
-
-
-
-################## MMSE Overall medicaton#############
-```{r}
-AIBL_full_df_mmse_imputed_overall <- make_participant_summary(
-  df            = AIBL_full_df_mmse_imputed,
-  id_col        = "id",
-  time_col      = "months_since_baseline",
-  visit_col     = "visit_no",   # or NULL if absent
-  dataset_col   = NULL,         # <- optional
-  value_col     = "MMSE",
-  out_col       = "dMMSE_per_year",
-  med_cols      = med_cols,
-  demo_cols     = c("age","sex","APOE4","status"),
-  collapse_mode = "overall"
-)
-
-NACC_full_df_mmse_imputed_overall <- make_participant_summary(
-  df            = NACC_full_df_mmse_imputed,
-  id_col        = "id",
-  time_col      = "months_since_baseline",
-  visit_col     = "visit_no",   # or NULL if absent
-  dataset_col   = NULL,         # <- optional
-  value_col     = "MMSE",
-  out_col       = "dMMSE_per_year",
-  med_cols      = med_cols,
-  demo_cols     = c("age","sex","APOE4","status"),
-  collapse_mode = "overall"
-)
-
-HABS_full_df_mmse_imputed_overall <- make_participant_summary(
-  df            = HABS_full_df_mmse_imputed,
-  id_col        = "id",
-  time_col      = "months_since_baseline",
-  visit_col     = "visit_no",   # or NULL if absent
-  dataset_col   = NULL,         # <- optional
-  value_col     = "MMSE",
-  out_col       = "dMMSE_per_year",
-  med_cols      = med_cols,
-  demo_cols     = c("age","sex","APOE4","status"),
-  collapse_mode = "overall"
-)
-```
-
-```{r}
-res2 <- baseline_props_to_pdf(
-  NACC_df = NACC_full_df_mmse_imputed_overall,
-  AIBL_df = AIBL_full_df_mmse_imputed_overall,
-  HABS_df = HABS_full_df_mmse_imputed_overall,
-  out_pdf = "../plots/drug_usage/MMSE_overall_drug_usage.pdf",
-  width = 11, height = 4.2,     # absolute inches
-  fill_values = c("Yes" = "#67a8cd", "No" = "#E68B81"),
-  add_borders = TRUE,
-  text_size = 8                  # smaller overall text
-)
-```
-
-```{r}
-overall_table <- baseline_props_table(
-  NACC_df = NACC_full_df_mmse_imputed_overall,
-  AIBL_df = AIBL_full_df_mmse_imputed_overall,
-  HABS_df = HABS_full_df_mmse_imputed_overall,
-  dataset_order = c("NACC","AIBL","HABS"),
-  include_individual_meds = TRUE,
-  include_any_med = TRUE,
-  digits = 1
-)
-print(overall_table)
-```
-
-
-
 
 ```{r}
 NACC_full_df_cdr_imputed<-read.csv("../preprocessed_data/NACC/NACC_cdr_imputed_binary.csv")
@@ -181,7 +32,13 @@ AIBL_full_df_cdr_imputed<-read.csv("../preprocessed_data/AIBL/AIBL_cdr_imputed_b
 HABS_full_df_cdr_imputed<-read.csv("../preprocessed_data/HABSHD/HABSHD_cdr_imputed_binary.csv")
 ```
 
-################## MMSE Baseline medicaton#############
+```{r}
+colnames(NACC_full_df_cdr_imputed)[colnames(NACC_full_df_cdr_imputed) %in% med_cols] <- med_cols_rename
+colnames(AIBL_full_df_cdr_imputed)[colnames(AIBL_full_df_cdr_imputed) %in% med_cols] <- med_cols_rename
+colnames(HABS_full_df_cdr_imputed)[colnames(HABS_full_df_cdr_imputed) %in% med_cols] <- med_cols_rename
+```
+
+################## Baseline medicaton#############
 ```{r}
 AIBL_full_df_cdr_imputed_baseline <- make_participant_summary(
   df            = AIBL_full_df_cdr_imputed,
@@ -191,7 +48,7 @@ AIBL_full_df_cdr_imputed_baseline <- make_participant_summary(
   dataset_col   = NULL,         # <- optional
   value_col     = "CDR",
   out_col       = "dCDR_per_year",
-  med_cols      = med_cols,
+  med_cols      = med_cols_rename,
   demo_cols     = c("age","sex","APOE4","status"),
   collapse_mode = "baseline"
 )
@@ -204,7 +61,7 @@ NACC_full_df_cdr_imputed_baseline <- make_participant_summary(
   dataset_col   = NULL,         # <- optional
   value_col     = "CDR",
   out_col       = "dCDR_per_year",
-  med_cols      = med_cols,
+  med_cols      = med_cols_rename,
   demo_cols     = c("age","sex","APOE4","status"),
   collapse_mode = "baseline"
 )
@@ -217,23 +74,25 @@ HABS_full_df_cdr_imputed_baseline <- make_participant_summary(
   dataset_col   = NULL,         # <- optional
   value_col     = "CDR",
   out_col       = "dCDR_per_year",
-  med_cols      = med_cols,
+  med_cols      = med_cols_rename,
   demo_cols     = c("age","sex","APOE4","status"),
   collapse_mode = "baseline"
 )
 ```
 
-
+Medication exposure proportions at Baseline
+Composite ‘Any medication’ = participant has ≥1 of the meds
 ```{r}
 res3 <- baseline_props_to_pdf(
   NACC_df = NACC_full_df_cdr_imputed_baseline,
   AIBL_df = AIBL_full_df_cdr_imputed_baseline,
   HABS_df = HABS_full_df_cdr_imputed_baseline,
+  med_cols = med_cols_rename,
   out_pdf = "../plots/drug_usage/CDR_baseline_drug_usage.pdf",
-  width = 11, height = 4.2,     # absolute inches
+  width = 11, height = 5,     # absolute inches
   fill_values = c("Yes" = "#67a8cd", "No" = "#E68B81"),
   add_borders = TRUE,
-  text_size = 8                  # smaller overall text
+  text_size = 12                 # smaller overall text
 )
 ```
 
@@ -245,13 +104,14 @@ baseline_table2 <- baseline_props_table(
   dataset_order = c("NACC","AIBL","HABS"),
   include_individual_meds = TRUE,
   include_any_med = TRUE,
+  med_cols = med_cols_rename,
   digits = 1
 )
 print(baseline_table2)
 ```
 
 
-################## MMSE Overall medicaton#############
+################## Overall medicaton#############
 ```{r}
 AIBL_full_df_cdr_imputed_overall <- make_participant_summary(
   df            = AIBL_full_df_cdr_imputed,
@@ -261,7 +121,7 @@ AIBL_full_df_cdr_imputed_overall <- make_participant_summary(
   dataset_col   = NULL,         # <- optional
   value_col     = "CDR",
   out_col       = "dCDR_per_year",
-  med_cols      = med_cols,
+  med_cols      = med_cols_rename,
   demo_cols     = c("age","sex","APOE4","status"),
   collapse_mode = "overall"
 )
@@ -274,7 +134,7 @@ NACC_full_df_cdr_imputed_overall <- make_participant_summary(
   dataset_col   = NULL,         # <- optional
   value_col     = "CDR",
   out_col       = "dCDR_per_year",
-  med_cols      = med_cols,
+  med_cols      = med_cols_rename,
   demo_cols     = c("age","sex","APOE4","status"),
   collapse_mode = "overall"
 )
@@ -287,7 +147,7 @@ HABS_full_df_cdr_imputed_overall <- make_participant_summary(
   dataset_col   = NULL,         # <- optional
   value_col     = "CDR",
   out_col       = "dCDR_per_year",
-  med_cols      = med_cols,
+  med_cols      = med_cols_rename,
   demo_cols     = c("age","sex","APOE4","status"),
   collapse_mode = "overall"
 )
@@ -298,11 +158,12 @@ res4 <- baseline_props_to_pdf(
   NACC_df = NACC_full_df_cdr_imputed_overall,
   AIBL_df = AIBL_full_df_cdr_imputed_overall,
   HABS_df = HABS_full_df_cdr_imputed_overall,
+  med_cols = med_cols_rename,
   out_pdf = "../plots/drug_usage/CDR_overall_drug_usage.pdf",
-  width = 11, height = 4.2,     # absolute inches
+  width = 11, height = 5,     # absolute inches
   fill_values = c("Yes" = "#67a8cd", "No" = "#E68B81"),
   add_borders = TRUE,
-  text_size = 8                  # smaller overall text
+  text_size = 12                  # smaller overall text
 )
 ```
 
@@ -311,7 +172,8 @@ overall_table2 <- baseline_props_table(
   NACC_df = NACC_full_df_cdr_imputed_overall,
   AIBL_df = AIBL_full_df_cdr_imputed_overall,
   HABS_df = HABS_full_df_cdr_imputed_overall,
-  dataset_order = c("NACC", "AIBL","HABS"),
+  dataset_order = c("NACC", "AIBL","HABS-HD"),
+  med_cols = med_cols_rename,
   include_individual_meds = TRUE,
   include_any_med = TRUE,
   digits = 1

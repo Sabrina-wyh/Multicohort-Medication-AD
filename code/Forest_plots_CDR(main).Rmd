@@ -6,7 +6,7 @@ output: word_document
 ---
 
 ```{r}
-rm(list=ls())
+# rm(list=ls())
 library(missRanger)
 library(dplyr)
 library(lubridate)
@@ -37,6 +37,8 @@ NACC_full_df_cdr<-read.csv("../preprocessed_data/NACC/NACC_cdr_imputed.csv")
 AIBL_full_df_cdr<-read.csv("../preprocessed_data/AIBL/AIBL_cdr_imputed.csv")
 HABS_full_df_cdr<-read.csv("../preprocessed_data/HABSHD/HABSHD_cdr_imputed.csv")
 NACC_full_df_cdr$edu <- scale(NACC_full_df_cdr$edu)
+
+
 NACC_full_df_cdr$age <- scale(NACC_full_df_cdr$age)
 AIBL_full_df_cdr$edu <- scale(AIBL_full_df_cdr$edu)
 AIBL_full_df_cdr$age <- scale(AIBL_full_df_cdr$age)
@@ -61,6 +63,10 @@ fit_full_NACC <- lmer(
 summary(fit_full_NACC)
 ```
 
+```{r}
+p.adjust(coef(summary(fit_full_NACC))[,"Pr(>|t|)"], method="BH")
+```
+
 
 ```{r}
 AIBL_full_df_cdr$visit_date <- as.Date(AIBL_full_df_cdr$visit_date, format = "%Y-%m-%d")
@@ -76,6 +82,10 @@ fit_full_AIBL <- lmer(
 )
 summary(fit_full_AIBL)
 ```
+```{r}
+p.adjust(coef(summary(fit_full_AIBL))[,"Pr(>|t|)"], method="BH")
+```
+
 
 ```{r}
 HABS_full_df_cdr$visit_date <- as.Date(HABS_full_df_cdr$visit_date, format = "%Y-%m-%d")
@@ -90,6 +100,10 @@ fit_full_HABS <- lmer(
   data = HABS_full_df_cdr
 )
 summary(fit_full_HABS)
+```
+
+```{r}
+p.adjust(coef(summary(fit_full_HABS))[,"Pr(>|t|)"], method="BH")
 ```
 
 # Gender Stratficaton
@@ -308,63 +322,146 @@ terms_all <-c(
 terms_rename <- c(
     "year_since_baseline"="Time",
     "age"="Age (baseline)",
-    "sex"="Sex (ref: Female)",
+    "sex"="Sex (ref: Male)",
     "edu"="Education (z-scored)",
-    "APOE4"="APOE4 carrier (ref: Yes)",
+    "APOE4"="APOE4 carrier (ref: No)",
     "ACEiTrue"="ACEi",
-    "ARBTrue"="ARB",
-    "BetaBlkTrue"="BetaBlk",
-    "CCBTrue"="CCB",
-    "DiureticTrue"="Diuretic",
+    "ARBTrue"="ARBs",
+    "BetaBlkTrue"="β-Blocker",
+    "CCBTrue"="CCBs",
+    "DiureticTrue"="Diuretics",
     "MetforminTrue"="Metformin",
-    "StatinTrue"="Statin",
+    "StatinTrue"="Statins",
     "year_since_baseline:ACEiTrue"="ACEi × Time",
-    "year_since_baseline:ARBTrue"="ARB × Time",
-    "year_since_baseline:BetaBlkTrue"="BetaBlk × Time",
-    "year_since_baseline:CCBTrue"="CCB × Time",
-    "year_since_baseline:DiureticTrue"="Diuretic × Time",
+    "year_since_baseline:ARBTrue"="ARBs × Time",
+    "year_since_baseline:BetaBlkTrue"="β-Blocker × Time",
+    "year_since_baseline:CCBTrue"="CCBs × Time",
+    "year_since_baseline:DiureticTrue"="Diuretics × Time",
     "year_since_baseline:MetforminTrue"="Metformin × Time",
-    "year_since_baseline:StatinTrue"="Statin × Time"
+    "year_since_baseline:StatinTrue"="Statins × Time"
   )
 ```
 
 
 ```{r}
-plot_forest_subset(
+plot_forest_subset_meta_expanded(
   fits = list(
     Full     = list(fit_full_NACC,   fit_full_AIBL,   fit_full_HABS),
     Female   = list(fit_female_NACC, fit_female_AIBL, fit_female_HABS),
     Male     = list(fit_male_NACC,   fit_male_AIBL,   fit_male_HABS),
-    APOE4pos = list(fit_APOEY_NACC,  fit_APOEY_AIBL,  fit_APOEY_HABS),
-    APOE4neg = list(fit_APOEN_NACC,  fit_APOEN_AIBL,  fit_APOEN_HABS)
+    `APOE4 carriers`     = list(fit_APOEY_NACC,  fit_APOEY_AIBL,  fit_APOEY_HABS),
+    `APOE4 non-carriers` = list(fit_APOEN_NACC,  fit_APOEN_AIBL,  fit_APOEN_HABS)
   ),
-  terms        = terms_all,
-  groups       = c("Full","Female","Male","APOE4pos","APOE4neg"),
-  cohorts      = c("NACC","AIBL","HABS"),
-  term_labels  = terms_rename,
-  title        = "",
-  filename     = "../plots/forestplot/CDR_forestplot_main.pdf",
-  width        = 25,
-  height       = 20,
-
-  # layout / styling
-  ref_line     = 0,
-  xlim_fixed   = c(-0.8, 0.8),
+  terms         = terms_all,
+  groups        = c("Full","Female","Male","APOE4 carriers","APOE4 non-carriers"),
+  cohorts       = c("NACC","AIBL","HABS-HD"),
+  term_labels   = terms_rename,
+  title         = "",
+  filename      = "../plots/forestplot/CDR_forestplot_main_baseline.pdf",
+  width         = 31, height = 12,
+  ref_line      = 0,
+  # xlim_fixed    = c(-0.8, 0.8),
+  xlim_per_group = list(
+  Full = c(-0.4, 0.4),
+  Female = c(-0.5, 0.5),
+  Male = c(-0.5, 0.5),
+  "APOE4 carriers" = c(-0.5, 0.5),
+  "APOE4 non-carriers" = c(-0.4, 0.4)
+),
   cohort_colors = c("#DAA87C", "#92A5D1", "#C9DCC4"),
   cohort_shapes = c(15, 16, 18),
-  point_size   = 0.8,
-  line_width   = 2.5,
-  row_padding_mm = 10,
-
-  # spacing between big columns (group blocks)
-  gutter       = TRUE,
-  gutter_width = 0.04,
-
-  # column widths (feel free to tweak these three)
-  first_col_width = 0.40,   # "Measurements" column
-  est_frac        = 0.22,   # Estimate(SE) column (per group)
-  ci_frac         = 0.16    # CI/forest column (per group)
+  IF_META_ANALYSIS = TRUE, meta_label = "Meta", meta_color = "#fe6666", meta_shape = 17,
+  row_padding_mm = 6, lineheight_txt = 0.05,
+  point_size = 0.8, line_width = 2.8,
+  # ABSOLUTE widths in INCHES (not fractions!)
+  add_gutter = TRUE,gutter_width=0.10,
+  # gutter_width = 0.2,       # 0.5 inches between groups
+  first_col_width = 3.5,    # 3.5 inches for Measurements
+  est_frac = 3.0,           # 2.5 inches for Estimate (SE)
+  wgt_frac = 2.0,           # 1.5 inches for Weight
+  ci_frac = 8.0,            # 8 inches for CI plot (WIDE!)
+  block_col1 = "#f8f1ff", block_col2 = "#FFFFFF",
+  p_adjust = 'BH',
+  feature_subset=c("ACEiTrue","ARBTrue","BetaBlkTrue","CCBTrue","DiureticTrue","MetforminTrue", "StatinTrue")
 )
-
+```
+```{r}
+plot_forest_subset_meta_expanded(
+  fits = list(
+    Full     = list(fit_full_NACC,   fit_full_AIBL,   fit_full_HABS),
+    Female   = list(fit_female_NACC, fit_female_AIBL, fit_female_HABS),
+    Male     = list(fit_male_NACC,   fit_male_AIBL,   fit_male_HABS),
+    `APOE4 carriers`     = list(fit_APOEY_NACC,  fit_APOEY_AIBL,  fit_APOEY_HABS),
+    `APOE4 non-carriers` = list(fit_APOEN_NACC,  fit_APOEN_AIBL,  fit_APOEN_HABS)
+  ),
+  terms         = terms_all,
+  groups        = c("Full","Female","Male","APOE4 carriers","APOE4 non-carriers"),
+  cohorts       = c("NACC","AIBL","HABS-HD"),
+  term_labels   = terms_rename,
+  title         = "",
+  filename      = "../plots/forestplot/CDR_forestplot_main_longitudinal.pdf",
+  width         = 31, height = 12,
+  ref_line      = 0,
+  # xlim_fixed    = c(-0.2, 0.2),
+  xlim_per_group = list(
+  Full = c(-0.1, 0.1),
+  Female = c(-0.1, 0.1),
+  Male = c(-0.1, 0.1),
+  "APOE4 carriers" = c(-0.1, 0.1),
+  "APOE4 non-carriers" = c(-0.1, 0.1)
+),
+  cohort_colors = c("#DAA87C", "#92A5D1", "#C9DCC4"),
+  cohort_shapes = c(15, 16, 18),
+  IF_META_ANALYSIS = TRUE, meta_label = "Meta", meta_color = "#fe6666", meta_shape = 17,
+  row_padding_mm = 6, lineheight_txt = 0.05,
+  point_size = 0.85, line_width = 2.8,
+  # ABSOLUTE widths in INCHES (not fractions!)
+  add_gutter = TRUE,gutter_width=0.10,
+  # gutter_width = 0.2,       # 0.5 inches between groups
+  first_col_width = 3.5,    # 3.5 inches for Measurements
+  est_frac = 3.0,           # 2.5 inches for Estimate (SE)
+  wgt_frac = 2.0,           # 1.5 inches for Weight
+  ci_frac = 8.0,            # 8 inches for CI plot (WIDE!)
+  block_col1 = "#f8f1ff", block_col2 = "#FFFFFF",
+  p_adjust = 'BH',
+  feature_subset=c("year_since_baseline:ACEiTrue","year_since_baseline:ARBTrue",
+    "year_since_baseline:BetaBlkTrue","year_since_baseline:CCBTrue",
+    "year_since_baseline:DiureticTrue", "year_since_baseline:MetforminTrue",
+    "year_since_baseline:StatinTrue")
+)
+```
+```{r}
+dt_ = make_dt_from_fits(
+  fits = list(
+    Full     = list(fit_full_NACC,   fit_full_AIBL,   fit_full_HABS),
+    Female   = list(fit_female_NACC, fit_female_AIBL, fit_female_HABS),
+    Male     = list(fit_male_NACC,   fit_male_AIBL,   fit_male_HABS),
+    `APOE4 carriers` = list(fit_APOEY_NACC,  fit_APOEY_AIBL,  fit_APOEY_HABS),
+    `APOE4 non-carriers` = list(fit_APOEN_NACC,  fit_APOEN_AIBL,  fit_APOEN_HABS)
+  ),
+  term= terms_all,
+  cohorts = c("NACC","AIBL","HABS"),
+  term_labels  = terms_rename,
+  method = "REML",
+  digits = 3, 
+  p_adjust = "BH"
+)
 ```
 
+```{r}
+dt_t = make_dt_from_fits(
+  fits = list(
+    Full     = list(fit_full_NACC,   fit_full_AIBL,   fit_full_HABS),
+    Female   = list(fit_female_NACC, fit_female_AIBL, fit_female_HABS),
+    Male     = list(fit_male_NACC,   fit_male_AIBL,   fit_male_HABS),
+    `APOE4 carriers` = list(fit_APOEY_NACC,  fit_APOEY_AIBL,  fit_APOEY_HABS),
+    `APOE4 non-carriers` = list(fit_APOEN_NACC,  fit_APOEN_AIBL,  fit_APOEN_HABS)
+  ),
+  term= terms_all,
+  cohorts = c("NACC","AIBL","HABS"),
+  term_labels  = terms_rename,
+  method = "REML",
+  digits = 3, 
+  p_adjust = "none"
+)
+```

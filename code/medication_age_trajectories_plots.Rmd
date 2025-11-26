@@ -23,96 +23,19 @@ source("plots.R")
 
 ```{r}
 med_cols<-c("ACEi","ARB","BetaBlk","CCB","Diuretic","Metformin","Statin")
+med_cols_rename <-c("ACEi","ARBs","β-Blocker","CCBs","Diuretics","Statins","Metformin")
 ```
-
-```{r}
-NACC_full_df_mmse_imputed<-read.csv("../preprocessed_data/NACC/NACC_mmse_imputed_binary.csv")
-AIBL_full_df_mmse_imputed<-read.csv("../preprocessed_data/AIBL/AIBL_mmse_imputed_binary.csv")
-HABS_full_df_mmse_imputed<-read.csv("../preprocessed_data/HABSHD/HABSHD_mmse_imputed_binary.csv")
-```
-
-################## MMSE Baseline medicaton#############
-```{r}
-AIBL_full_df_mmse_imputed_baseline <- make_participant_summary(
-  df            = AIBL_full_df_mmse_imputed,
-  id_col        = "id",
-  time_col      = "months_since_baseline",
-  visit_col     = "visit_no",   # or NULL if absent
-  dataset_col   = NULL,         # <- optional
-  value_col     = "MMSE",
-  out_col       = "dMMSE_per_year",
-  med_cols      = med_cols,
-  demo_cols     = c("age","sex","APOE4","status"),
-  collapse_mode = "baseline"
-)
-
-NACC_full_df_mmse_imputed_baseline <- make_participant_summary(
-  df            = NACC_full_df_mmse_imputed,
-  id_col        = "id",
-  time_col      = "months_since_baseline",
-  visit_col     = "visit_no",   # or NULL if absent
-  dataset_col   = NULL,         # <- optional
-  value_col     = "MMSE",
-  out_col       = "dMMSE_per_year",
-  med_cols      = med_cols,
-  demo_cols     = c("age","sex","APOE4","status"),
-  collapse_mode = "baseline"
-)
-
-HABS_full_df_mmse_imputed_baseline <- make_participant_summary(
-  df            = HABS_full_df_mmse_imputed,
-  id_col        = "id",
-  time_col      = "months_since_baseline",
-  visit_col     = "visit_no",   # or NULL if absent
-  dataset_col   = NULL,         # <- optional
-  value_col     = "MMSE",
-  out_col       = "dMMSE_per_year",
-  med_cols      = med_cols,
-  demo_cols     = c("age","sex","APOE4","status"),
-  collapse_mode = "baseline"
-)
-```
-
-Attained-age medication prevalence (visit-level): 7 meds + Any
-```{r}
-p8_mmse_baseline <- plot_med_prevalence_by_age_smooth_multi(
-  NACC_df = NACC_full_df_mmse_imputed_baseline,
-  AIBL_df = AIBL_full_df_mmse_imputed_baseline,
-  HABS_df = HABS_full_df_mmse_imputed_baseline,
-  dataset_order = c("NACC", "AIBL","HABS"),
-  show_ci = FALSE,    # 8 ribbons get busy; turn on if you want
-  text_size = 8,
-  free_x=TRUE
-)
-print(p8_mmse_baseline)
-
-# Save with your preferred pdf/dev.off style
-pdf("../plots/trajectory/MMSE_age_prevalence_baseline.pdf", width = 12, height = 4)
-print(p8_mmse_baseline)
-dev.off()
-```
-
-```{r}
-p_age <- plot_attained_age_prevalence_multi(
-  NACC_long = NACC_full_df_mmse_imputed,
-  AIBL_long = AIBL_full_df_mmse_imputed,
-  HABS_long = HABS_full_df_mmse_imputed,
-  dataset_order = c("NACC", "AIBL","HABS"),
-  show_ci = FALSE, text_size = 8, add_panel_frame = TRUE
-)
-print(p_age)
-
-pdf("../plots/trajectory/MMSE_age_prevalence_overall.pdf", width = 12, height = 4)
-print(p_age)
-dev.off()
-```
-
 
 
 ```{r}
 NACC_full_df_cdr_imputed<-read.csv("../preprocessed_data/NACC/NACC_cdr_imputed_binary.csv")
 AIBL_full_df_cdr_imputed<-read.csv("../preprocessed_data/AIBL/AIBL_cdr_imputed_binary.csv")
 HABS_full_df_cdr_imputed<-read.csv("../preprocessed_data/HABSHD/HABSHD_cdr_imputed_binary.csv")
+
+colnames(NACC_full_df_cdr_imputed)[colnames(NACC_full_df_cdr_imputed) %in% med_cols] <- med_cols_rename
+colnames(AIBL_full_df_cdr_imputed)[colnames(AIBL_full_df_cdr_imputed) %in% med_cols] <- med_cols_rename
+colnames(HABS_full_df_cdr_imputed)[colnames(HABS_full_df_cdr_imputed) %in% med_cols] <- med_cols_rename
+
 ```
 
 ################## CDR Baseline medicaton#############
@@ -125,7 +48,7 @@ AIBL_full_df_cdr_imputed_baseline <- make_participant_summary(
   dataset_col   = NULL,         # <- optional
   value_col     = "CDR",
   out_col       = "dCDR_per_year",
-  med_cols      = med_cols,
+  med_cols      = med_cols_rename,
   demo_cols     = c("age","sex","APOE4","status"),
   collapse_mode = "baseline"
 )
@@ -138,7 +61,7 @@ NACC_full_df_cdr_imputed_baseline <- make_participant_summary(
   dataset_col   = NULL,         # <- optional
   value_col     = "CDR",
   out_col       = "dCDR_per_year",
-  med_cols      = med_cols,
+  med_cols      = med_cols_rename,
   demo_cols     = c("age","sex","APOE4","status"),
   collapse_mode = "baseline"
 )
@@ -151,7 +74,7 @@ HABS_full_df_cdr_imputed_baseline <- make_participant_summary(
   dataset_col   = NULL,         # <- optional
   value_col     = "CDR",
   out_col       = "dCDR_per_year",
-  med_cols      = med_cols,
+  med_cols      = med_cols_rename,
   demo_cols     = c("age","sex","APOE4","status"),
   collapse_mode = "baseline"
 )
@@ -164,7 +87,8 @@ p8_cdr_baseline <- plot_med_prevalence_by_age_smooth_multi(
   NACC_df = NACC_full_df_cdr_imputed_baseline,
   AIBL_df = AIBL_full_df_cdr_imputed_baseline,
   HABS_df = HABS_full_df_cdr_imputed_baseline,
-  dataset_order = c("NACC", "AIBL","HABS"),
+  med_cols = med_cols_rename,
+  dataset_order = c("NACC", "AIBL","HABS-HD"),
   show_ci = FALSE,    # 8 ribbons get busy; turn on if you want
   text_size = 8,
   free_x=TRUE
@@ -172,7 +96,8 @@ p8_cdr_baseline <- plot_med_prevalence_by_age_smooth_multi(
 print(p8_cdr_baseline)
 
 # Save with your preferred pdf/dev.off style
-pdf("../plots/trajectory/CDR_age_prevalence_baseline.pdf", width = 12, height = 4)
+# pdf("../plots/trajectory/CDR_age_prevalence_baseline.pdf", width = 12, height = 4)
+ggplot2::ggsave("../plots/trajectory/CDR_age_prevalence_baseline.pdf", p8_cdr_baseline, width=12, height=4, device=grDevices::cairo_pdf, family="Arial")
 print(p8_cdr_baseline)
 dev.off()
 ```
@@ -183,12 +108,13 @@ p_age_cdr <- plot_attained_age_prevalence_multi(
   NACC_long = NACC_full_df_cdr_imputed,
   AIBL_long = AIBL_full_df_cdr_imputed,
   HABS_long = HABS_full_df_cdr_imputed,
-  dataset_order = c("NACC", "AIBL","HABS"),
+  med_cols = med_cols_rename,
+  dataset_order = c("NACC", "AIBL","HABS-HD"),
   show_ci = FALSE, text_size = 8, add_panel_frame = TRUE
 )
-print(p_age_cdr)
 
-pdf("../plots/trajectory/CDR_age_prevalence_overall.pdf", width = 12, height = 4)
+# pdf("../plots/trajectory/CDR_age_prevalence_overall.pdf", width = 12, height = 4)
+ggplot2::ggsave("../plots/trajectory/CDR_age_prevalence_overall.pdf", p_age_cdr, width=12, height=4, device=grDevices::cairo_pdf, family="Arial")
 print(p_age_cdr)
 dev.off()
 ```

@@ -26,24 +26,6 @@ med_cols<-c("ACEi","ARB","BetaBlk","CCB","Diuretic","Metformin","Statin")
 AIBL_full_df <- read.csv("../preprocessed_data/AIBL/AIBL_merge_full_missing.csv")
 ```
 
-MMSE
-```{r}
-AIBL_full_df_mmse<-clean_by_measure(AIBL_full_df, 'MMSE')
-missing_summary(AIBL_full_df_mmse)
-AIBL_full_df_mmse_imputed<- missranger_impute(AIBL_full_df_mmse, c('id', 'status'))
-AIBL_full_df_mmse_imputed<- enforce_static_and_reindex(AIBL_full_df_mmse_imputed, id_col="id", visit_col="visit_no", static_cols=c("sex", "edu","APOE4"), prefer_non_na=TRUE)
-write.csv(AIBL_full_df_mmse_imputed, "../preprocessed_data/AIBL/AIBL_mmse_imputed.csv", row.names = FALSE)
-```
-
-```{r}
-AIBL_full_df_mmse_imputed_binary <- bool_to_binary(AIBL_full_df_mmse_imputed, med_cols)
-write.csv(AIBL_full_df_mmse_imputed_binary, "../preprocessed_data/AIBL/AIBL_mmse_imputed_binary.csv", row.names = FALSE)
-```
-
-```{r}
-summarize_data(AIBL_full_df_mmse_imputed)
-```
-
 CDR
 ```{r}
 AIBL_full_df_cdr<-clean_by_measure(AIBL_full_df, 'CDR')
@@ -66,24 +48,6 @@ summarize_data(AIBL_full_df_cdr_imputed)
 ### NACC
 ```{r}
 NACC_full_df <- read.csv("../preprocessed_data/NACC/NACC_merge_full_missing.csv")
-```
-
-MMSE
-```{r}
-NACC_full_df_mmse<-clean_by_measure(NACC_full_df, 'MMSE')
-missing_summary(NACC_full_df_mmse)
-NACC_full_df_mmse_imputed<- missranger_impute(NACC_full_df_mmse, c('id', 'status'))
-NACC_full_df_mmse_imputed<- enforce_static_and_reindex(NACC_full_df_mmse_imputed, id_col="id", visit_col="visit_no", static_cols=c("sex", "edu","APOE4"), prefer_non_na=TRUE)
-write.csv(NACC_full_df_mmse_imputed, "../preprocessed_data/NACC/NACC_mmse_imputed.csv", row.names = FALSE)
-```
-
-```{r}
-NACC_full_df_mmse_imputed_binary <- bool_to_binary(NACC_full_df_mmse_imputed, med_cols)
-write.csv(NACC_full_df_mmse_imputed_binary, "../preprocessed_data/NACC/NACC_mmse_imputed_binary.csv", row.names = FALSE)
-```
-
-```{r}
-summarize_data(NACC_full_df_mmse_imputed)
 ```
 
 
@@ -110,24 +74,6 @@ summarize_data(NACC_full_df_cdr_imputed)
 HABS_full_df <- read.csv("../preprocessed_data/HABSHD/HABSHD_merge_full_missing.csv")
 ```
 
-MMSE
-```{r}
-HABS_full_df_mmse<-clean_by_measure(HABS_full_df, 'MMSE')
-missing_summary(HABS_full_df_mmse)
-HABS_full_df_mmse_imputed<- missranger_impute(HABS_full_df_mmse, c('id', 'status'))
-HABS_full_df_mmse_imputed<- enforce_static_and_reindex(HABS_full_df_mmse_imputed, id_col="id", visit_col="visit_no", static_cols=c("sex", "edu","APOE4"), prefer_non_na=TRUE)
-write.csv(HABS_full_df_mmse_imputed, "../preprocessed_data/HABSHD/HABSHD_mmse_imputed.csv", row.names = FALSE)
-```
-
-```{r}
-HABS_full_df_mmse_imputed_binary <- bool_to_binary(HABS_full_df_mmse_imputed, med_cols)
-write.csv(HABS_full_df_mmse_imputed_binary, "../preprocessed_data/HABSHD/HABSHD_mmse_imputed_binary.csv", row.names = FALSE)
-```
-
-```{r}
-summarize_data(HABS_full_df_mmse_imputed)
-```
-
 
 CDR
 ```{r}
@@ -151,25 +97,6 @@ summarize_data(HABS_full_df_cdr_imputed)
 ### Meta
 for upsetplot only
 
-
-MMSE
-```{r}
-AIBL_full_df_mmse_upset<-make_ids_unique(AIBL_full_df_mmse_imputed, 'AIBL')
-NACC_full_df_mmse_upset<-make_ids_unique(NACC_full_df_mmse_imputed, 'NACC')
-HABS_full_df_mmse_upset<-make_ids_unique(HABS_full_df_mmse_imputed, 'HABS')
-```
-
-```{r}
-meta_df_mmse_upset <- bind_rows(
-  mutate(AIBL_full_df_mmse_upset, dataset = "AIBL"),
-  mutate(NACC_full_df_mmse_upset, dataset = "NACC"),
-  mutate(HABS_full_df_mmse_upset, dataset = "HABS")
-)
-meta_df_mmse_upset <- bool_to_binary(meta_df_mmse_upset, med_cols)
-write.csv(meta_df_mmse_upset, "../preprocessed_data/meta/meta_mmse_upset.csv", row.names = FALSE)
-```
-
-
 CDR
 ```{r}
 AIBL_full_df_cdr_upset<-make_ids_unique(AIBL_full_df_cdr_imputed, 'AIBL')
@@ -185,4 +112,53 @@ meta_df_cdr_upset <- bind_rows(
 )
 meta_df_cdr_upset <- bool_to_binary(meta_df_cdr_upset, med_cols)
 write.csv(meta_df_cdr_upset, "../preprocessed_data/meta/meta_cdr_upset.csv", row.names = FALSE)
+```
+
+
+
+for meta analysis
+```{r}
+set.seed(42)
+NACC_select <- NACC_full_df_cdr_upset[NACC_full_df_cdr_upset$id %in% sample(unique(NACC_full_df_cdr_upset$id), 1700), ]
+write.csv(NACC_select, "../preprocessed_data/meta/NACC_select.csv", row.names = FALSE)
+```
+
+```{r}
+meta_df_cdr_meta <- bind_rows(
+  mutate(AIBL_full_df_cdr_upset, dataset = "AIBL"),
+  mutate(NACC_select, dataset = "NACC"),
+  mutate(HABS_full_df_cdr_upset, dataset = "HABS")
+)
+# meta_df_cdr_meta <- bool_to_binary(meta_df_cdr_meta, med_cols)
+write.csv(meta_df_cdr_meta, "../preprocessed_data/meta/meta_analysis_cdr.csv", row.names = FALSE)
+```
+
+# no NACC
+```{r}
+meta_df_withoutNACC <- bind_rows(
+  mutate(AIBL_full_df_cdr_upset, dataset = "AIBL"),
+  mutate(HABS_full_df_cdr_upset, dataset = "HABS")
+)
+# meta_df_withoutNACC <- bool_to_binary(meta_df_withoutNACC, med_cols)
+write.csv(meta_df_withoutNACC, "../preprocessed_data/meta/meta_analysis_noNACC.csv", row.names = FALSE)
+```
+
+# no AIBL
+```{r}
+meta_df_withoutAIBL<- bind_rows(
+  mutate(NACC_select, dataset = "NACC"),
+  mutate(HABS_full_df_cdr_upset, dataset = "HABS")
+)
+# meta_df_withoutAIBL <- bool_to_binary(meta_df_withoutAIBL, med_cols)
+write.csv(meta_df_withoutAIBL, "../preprocessed_data/meta/meta_analysis_noAIBL.csv", row.names = FALSE)
+```
+
+# no HABS
+```{r}
+meta_df_cdr_withoutHABS <- bind_rows(
+  mutate(AIBL_full_df_cdr_upset, dataset = "AIBL"),
+  mutate(NACC_select, dataset = "NACC")
+)
+# meta_df_cdr_withoutHABS <- bool_to_binary(meta_df_cdr_withoutHABS, med_cols)
+write.csv(meta_df_cdr_withoutHABS, "../preprocessed_data/meta/meta_analysis_noHABS.csv", row.names = FALSE)
 ```
