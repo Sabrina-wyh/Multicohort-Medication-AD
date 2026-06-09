@@ -1,0 +1,371 @@
+---
+title: "meta_plots"
+author: "Yihan Wang"
+date: "2025-09-16"
+output: word_document
+---
+
+```{r}
+# rm(list=ls())
+library(missRanger)
+library(dplyr)
+library(lubridate)
+library(lme4)       # mixed models
+library(lmerTest)   # p-values for lmer
+library(splines)
+library(conflicted)
+library(broom.mixed)
+library(dplyr)
+library(stringr)
+library(forcats)
+library(ggplot2)
+library(forestploter)
+library(grid)
+library(gridtext)
+conflicts_prefer(dplyr::lag)
+conflicts_prefer(lmerTest::lmer)
+conflicts_prefer(dplyr::filter)
+```
+
+```{r}
+source("medication-lmer-utility.R")
+source("plots.R")
+```
+
+```{r}
+NACC_full_df_cdr<-read.csv("../preprocessed_data/NACC/NACC_cdr_imputed_binary.csv")
+AIBL_full_df_cdr<-read.csv("../preprocessed_data/AIBL/AIBL_cdr_imputed_binary.csv")
+HABS_full_df_cdr<-read.csv("../preprocessed_data/HABSHD/HABSHD_cdr_imputed_binary.csv")
+NACC_full_df_cdr$edu <- scale(NACC_full_df_cdr$edu)
+NACC_full_df_cdr$age <- scale(NACC_full_df_cdr$age)
+AIBL_full_df_cdr$edu <- scale(AIBL_full_df_cdr$edu)
+AIBL_full_df_cdr$age <- scale(AIBL_full_df_cdr$age)
+HABS_full_df_cdr$edu <- scale(HABS_full_df_cdr$edu)
+HABS_full_df_cdr$age <- scale(HABS_full_df_cdr$age)
+```
+
+```{r}
+NACC_hc= split_by_baseline(NACC_full_df_cdr, id_col = "id", visit_col = "visit_no", status_col = "status")$HC
+AIBL_hc= split_by_baseline(AIBL_full_df_cdr, id_col = "id", visit_col = "visit_no", status_col = "status")$HC
+HABS_hc= split_by_baseline(HABS_full_df_cdr, id_col = "id", visit_col = "visit_no", status_col = "status")$HC
+```
+
+# Full
+
+```{r}
+NACC_full_df_cdr$visit_date <- as.Date(NACC_full_df_cdr$visit_date, format = "%Y-%m-%d")
+fit_full_NACC <- lmer(
+  CDR ~ year_since_baseline +
+    age + sex + edu + APOE4 +
+    CVD + Endocrine + Psychiatric +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
+    ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
+    CCB:year_since_baseline + Diuretic:year_since_baseline + 
+    Metformin:year_since_baseline + Statin:year_since_baseline +
+    (1 + year_since_baseline | id),
+  data = NACC_full_df_cdr
+)
+summary(fit_full_NACC)
+```
+
+```{r}
+AIBL_full_df_cdr$visit_date <- as.Date(AIBL_full_df_cdr$visit_date, format = "%Y-%m-%d")
+fit_full_AIBL <- lmer(
+  CDR ~ year_since_baseline +
+    age + sex + edu + APOE4 +
+    CVD + Endocrine + Psychiatric +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
+    ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
+    CCB:year_since_baseline + Diuretic:year_since_baseline + 
+    Metformin:year_since_baseline + Statin:year_since_baseline +
+    (1 + year_since_baseline | id),
+  data = AIBL_full_df_cdr
+)
+summary(fit_full_AIBL)
+```
+
+```{r}
+HABS_full_df_cdr$visit_date <- as.Date(HABS_full_df_cdr$visit_date, format = "%Y-%m-%d")
+fit_full_HABS <- lmer(
+  CDR ~ year_since_baseline +
+    age + sex + edu + APOE4 +
+    CVD + Endocrine + Psychiatric +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
+    ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
+    CCB:year_since_baseline + Diuretic:year_since_baseline + 
+    Metformin:year_since_baseline + Statin:year_since_baseline +
+    (1 + year_since_baseline | id),
+  data = HABS_full_df_cdr
+)
+summary(fit_full_HABS)
+```
+
+### CU
+```{r}
+NACC_hc$visit_date <- as.Date(NACC_hc$visit_date, format = "%Y-%m-%d")
+fit_NACC_CU <- lmer(
+  CDR ~ year_since_baseline +
+    age + sex + edu + APOE4 +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
+    ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
+    CCB:year_since_baseline + Diuretic:year_since_baseline + 
+    Metformin:year_since_baseline + Statin:year_since_baseline +
+    (1 + year_since_baseline | id),
+  data = NACC_hc
+)
+summary(fit_NACC_CU)
+```
+
+
+```{r}
+AIBL_hc$visit_date <- as.Date(AIBL_hc$visit_date, format = "%Y-%m-%d")
+fit_AIBL_CU <- lmer(
+  CDR ~ year_since_baseline +
+    age + sex + edu + APOE4 +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
+    ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
+    CCB:year_since_baseline + Diuretic:year_since_baseline + 
+    Metformin:year_since_baseline + Statin:year_since_baseline +
+    (1 + year_since_baseline | id),
+  data = AIBL_hc
+)
+summary(fit_AIBL_CU)
+```
+
+```{r}
+HABS_hc$visit_date <- as.Date(HABS_hc$visit_date, format = "%Y-%m-%d")
+fit_HABS_CU <- lmer(
+  CDR ~ year_since_baseline +
+    age + sex + edu + APOE4 +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
+    ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
+    CCB:year_since_baseline + Diuretic:year_since_baseline + 
+    Metformin:year_since_baseline + Statin:year_since_baseline +
+    (1 + year_since_baseline | id),
+  data = HABS_hc
+)
+summary(fit_HABS_CU)
+```
+
+# MCI
+```{r}
+NACC_mci= split_by_baseline(NACC_full_df_cdr, id_col = "id", visit_col = "visit_no", status_col = "status")$MCI
+AIBL_mci= split_by_baseline(AIBL_full_df_cdr, id_col = "id", visit_col = "visit_no", status_col = "status")$MCI
+HABS_mci= split_by_baseline(HABS_full_df_cdr, id_col = "id", visit_col = "visit_no", status_col = "status")$MCI
+```
+
+```{r}
+NACC_mci$visit_date <- as.Date(NACC_mci$visit_date, format = "%Y-%m-%d")
+fit_NACC_MCI <- lmer(
+  CDR ~ year_since_baseline +
+    age + sex + edu + APOE4 +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
+    ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
+    CCB:year_since_baseline + Diuretic:year_since_baseline + 
+    Metformin:year_since_baseline + Statin:year_since_baseline +
+    (1 + year_since_baseline | id),
+  data = NACC_mci
+)
+summary(fit_NACC_MCI)
+```
+
+```{r}
+AIBL_mci$visit_date <- as.Date(AIBL_mci$visit_date, format = "%Y-%m-%d")
+fit_AIBL_MCI <- lmer(
+  CDR ~ year_since_baseline +
+    age + sex + edu + APOE4 +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
+    ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
+    CCB:year_since_baseline + Diuretic:year_since_baseline + 
+    Metformin:year_since_baseline + Statin:year_since_baseline +
+    (1 + year_since_baseline | id),
+  data = AIBL_mci
+)
+summary(fit_AIBL_MCI)
+```
+
+
+```{r}
+HABS_mci$visit_date <- as.Date(HABS_mci$visit_date, format = "%Y-%m-%d")
+fit_HABS_MCI <- lmer(
+  CDR ~ year_since_baseline +
+    age + sex + edu + APOE4 +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
+    ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
+    CCB:year_since_baseline + Diuretic:year_since_baseline + 
+    Metformin:year_since_baseline + Statin:year_since_baseline +
+    (1 + year_since_baseline | id),
+  data = HABS_mci
+)
+summary(fit_HABS_MCI)
+```
+
+
+# AD
+```{r}
+NACC_ad= split_by_baseline(NACC_full_df_cdr, id_col = "id", visit_col = "visit_no", status_col = "status")$AD
+AIBL_ad= split_by_baseline(AIBL_full_df_cdr, id_col = "id", visit_col = "visit_no", status_col = "status")$AD
+HABS_ad= split_by_baseline(HABS_full_df_cdr, id_col = "id", visit_col = "visit_no", status_col = "status")$AD
+```
+
+```{r}
+NACC_ad$visit_date <- as.Date(NACC_ad$visit_date, format = "%Y-%m-%d")
+fit_NACC_AD <- lmer(
+  CDR ~ year_since_baseline +
+    age + sex + edu + APOE4 +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
+    ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
+    CCB:year_since_baseline + Diuretic:year_since_baseline + 
+    Metformin:year_since_baseline + Statin:year_since_baseline +
+    (1 + year_since_baseline | id),
+  data = NACC_ad
+)
+summary(fit_NACC_AD)
+```
+
+```{r}
+AIBL_ad$visit_date <- as.Date(AIBL_ad$visit_date, format = "%Y-%m-%d")
+fit_AIBL_AD <- lmer(
+  CDR ~ year_since_baseline +
+    age + sex + edu + APOE4 +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
+    ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
+    CCB:year_since_baseline + Diuretic:year_since_baseline + 
+    Metformin:year_since_baseline + Statin:year_since_baseline +
+    (1 + year_since_baseline | id),
+  data = AIBL_ad
+)
+summary(fit_AIBL_AD)
+```
+
+
+```{r}
+HABS_ad$visit_date <- as.Date(HABS_ad$visit_date, format = "%Y-%m-%d")
+fit_HABS_AD <- lmer(
+  CDR ~ year_since_baseline +
+    age + sex + edu + APOE4 +
+    ACEi + ARB + BetaBlk + CCB + Diuretic + Metformin + Statin + 
+    ACEi:year_since_baseline + ARB:year_since_baseline + BetaBlk:year_since_baseline +
+    CCB:year_since_baseline + Diuretic:year_since_baseline + 
+    Metformin:year_since_baseline + Statin:year_since_baseline +
+    (1 + year_since_baseline | id),
+  data = HABS_ad
+)
+summary(fit_HABS_AD)
+```
+
+
+
+# plots
+```{r}
+terms_all <-c(
+    "year_since_baseline","age","sex","edu","APOE4",
+    "CVD", "Endocrine", "Psychiatric",
+    "ACEi","ARB","BetaBlk","CCB",
+    "Diuretic","Metformin", "Statin",
+    "year_since_baseline:ACEi","year_since_baseline:ARB",
+    "year_since_baseline:BetaBlk","year_since_baseline:CCB",
+    "year_since_baseline:Diuretic", "year_since_baseline:Metformin",
+    "year_since_baseline:Statin"
+  )
+terms_rename <- c(
+    "year_since_baseline"="Time",
+    "age"="Age (baseline)",
+    "sex"="Sex (ref: Male)",
+    "edu"="Education (z-scored)",
+    "APOE4"="APOE4 carrier (ref: No)",
+    "CVD"="CVD",
+    "Endocrine"="Endocrine disease",
+    "Psychiatric"="Psychiatric disease",
+    "ACEi"="ACEi",
+    "ARB"="ARBs",
+    "BetaBlk"="β-Blocker",
+    "CCB"="CCBs",
+    "Diuretic"="Diuretics",
+    "Metformin"="Metformin",
+    "Statin"="Statins",
+    "year_since_baseline:ACEi"="ACEi × Time",
+    "year_since_baseline:ARB"="ARBs × Time",
+    "year_since_baseline:BetaBlk"="β-Blocker × Time",
+    "year_since_baseline:CCB"="CCBs × Time",
+    "year_since_baseline:Diuretic"="Diuretics × Time",
+    "year_since_baseline:Metformin"="Metformin × Time",
+    "year_since_baseline:Statin"="Statins × Time"
+  )
+```
+
+
+```{r}
+dt_baseline_cog = make_dt_from_fits(
+  fits = list(
+    `Overall` = list(fit_full_NACC, fit_full_AIBL, fit_full_HABS),
+    `CU`     = list(fit_NACC_CU,   fit_AIBL_CU,   fit_HABS_CU),
+    `MCI`   = list(fit_NACC_MCI,   fit_AIBL_MCI,   fit_HABS_MCI),
+    `AD`     = list(fit_NACC_AD,   fit_AIBL_AD,   fit_HABS_AD)
+  ),
+  term= terms_all,
+  cohorts = c("NACC","AIBL","HABS"),
+  term_labels  = terms_rename,
+  method = "REML",
+  digits = 3,
+  p_adjust = "none"
+)
+```
+
+
+
+```{r}
+png_path <- "../plots/forestplot/FigureS3.png"
+dir.create(dirname(png_path), recursive = TRUE, showWarnings = FALSE)
+
+# Expanded width to 15 in for a wider landscape layout (5 parallel group tracks)
+img_w <- 12; img_h <- 10; img_dpi <- 900
+
+if (requireNamespace("ragg", quietly = TRUE)){
+  ragg::agg_png(png_path, width = img_w, height = img_h,
+                units = "in", res = img_dpi, background = "white")
+} else {
+  png(png_path, width = img_w * img_dpi, height = img_h * img_dpi,
+      res = img_dpi, bg = "white")
+}
+
+plot_forest_stratification_meta_expanded2(
+  dt               = dt_baseline_cog,
+  terms            = terms_all,
+  term_labels      = terms_rename,
+  cohorts          = c("NACC", "AIBL", "HABS"),
+  interaction_only = TRUE,  # Set to TRUE if you only want to plot the drug * time rows
+  
+  # Group tracking parameters for the 5 parallel blocks
+  prog_groups      = c("Overall", "CU", "MCI", "AD"),
+  group_colors     = c("#2F4F4F", "#8EBCBB", "#E8C38C", "#E64B35"),
+  
+  # Custom x-axis window boundaries for each of your 5 clinical group columns
+  xlim_cols        = list(
+    `Overall` = c(-0.05, 0.05),
+    `CU`      = c(-0.05, 0.05),
+    `MCI`     = c(-0.3, 0.3),
+    `AD`      = c(-1, 0.5)
+  ),
+  
+  col_label_width  = 0.08,   # Space for left features/cohort labels
+  forest_col_frac  = 0.48,   # 48% forest line graph / 52% text window ratio inside columns
+  
+  gap_feature      = 0.60,
+  sub_row_h        = 0.55,
+  cex_base         = 0.90,   # Sized perfectly for 5-column text spacing
+  ci_lwd           = 2.4,
+  point_cex        = 1.1,
+  diamond_height   = 0.38,
+  
+  title            = " ",
+  show_legend      = TRUE,
+  show_vline       = TRUE,
+  mar              = c(6.5, 0.5, 5, 0.5)  # Extended bottom cushion prevents legend clipping
+)
+
+dev.off()
+message("Saved: ", png_path)
+```
+```
+
