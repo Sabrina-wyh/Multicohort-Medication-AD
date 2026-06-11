@@ -1,0 +1,558 @@
+---
+title: "meta_plots"
+author: "Yihan Wang"
+date: "2025-09-16"
+output: word_document
+---
+
+```{r}
+rm(list=ls())
+set.seed(42)
+library(missRanger)
+library(tidyverse)
+library(ggplot2)
+library(UpSetR)
+library(purrr)
+library(conflicted)
+library(VennDiagram)
+library(grid)
+library(eulerr)
+conflicts_prefer(UpSetR::upset)
+conflicts_prefer(dplyr::filter)
+```
+
+```{r}
+source("medication-lmer-utility.R")
+source("plots.R")
+```
+
+```{r}
+med_cols <- c("ACEi","ARB","BetaBlk","CCB","Diuretic","Metformin","Statin")
+med_cols_rename <-c("ACEi","ARBs","β-Blocker","CCBs","Diuretics","Statins","Metformin")
+disease_cols <- c('CVD', 'Endocrine', 'Psychiatric')
+```
+
+```{r}
+AIBL_full_df_consist <- read.csv("../preprocessed_data/AIBL/AIBL_cdr_imputed_binary_consist.csv")
+colnames(AIBL_full_df_consist)[colnames(AIBL_full_df_consist) %in% med_cols] <- med_cols_rename
+NACC_full_df_consist <- read.csv("../preprocessed_data/NACC/NACC_cdr_imputed_binary_consist.csv")
+colnames(NACC_full_df_consist)[colnames(NACC_full_df_consist) %in% med_cols] <- med_cols_rename
+HABS_full_df_consist <- read.csv("../preprocessed_data/HABSHD/HABSHD_cdr_imputed_binary_consist.csv")
+colnames(HABS_full_df_consist)[colnames(HABS_full_df_consist) %in% med_cols] <- med_cols_rename
+meta_full_df_consist <- read.csv("../preprocessed_data/meta/meta_analysis_cdr_imputed_binary_consist.csv")
+colnames(meta_full_df_consist)[colnames(meta_full_df_consist) %in% med_cols] <- med_cols_rename
+```
+
+# upset plot (Figure 1A & Figure S1)
+## meta analysis
+```{r}
+meta_df_upset <- collapse_longitudinal(meta_full_df_consist, med_cols_rename)
+png(file="../plots/upsetplot/meta_overall_cdr_upset.png", 
+    width = 12000, height = 8000, res = 1200, units = "px")
+
+upset(meta_df_upset, sets = rev(med_cols_rename), 
+      # keep.order = TRUE,
+      queries = list(
+        list(query = elements,
+             params = list("dataset", c("NACC", "AIBL","HABS")), color = "#DAA87C", active = T, query.name = "NACC"),
+        list(query = elements,
+             params = list("dataset", c("AIBL","HABS")), color = "#92A5D1", active = T, query.name = "AIBL"),
+        list(query = elements,
+             params = list("dataset", "HABS"), color = "#C9DCC4", active = T, query.name = "HABS-HD")),
+      query.legend = "bottom",
+      nintersects = 30, 
+      order.by = "freq",
+      empty.intersections = "on",
+      mb.ratio = c(0.65, 0.35), point.size = 1, line.size = 0.3)
+
+dev.off()
+```
+
+##AIBL 
+```{r}
+AIBL_df_upset <- meta_df_upset[meta_df_upset$dataset=="AIBL",]
+png(file="../plots/upsetplot/AIBL_overall_cdr_upset.png", 
+    width = 12000, height = 8000, res = 700, units = "px")
+upset(AIBL_df_upset, sets= rev(med_cols_rename), 
+      # keep.order = TRUE,
+      nintersects = 30, 
+      order.by = "freq",
+      empty.intersections = "on",
+      mb.ratio=c(0.65,0.35), point.size=1, line.size=0.3)
+dev.off()
+```
+##NACC 
+```{r}
+NACC_df_upset <- meta_df_upset[meta_df_upset$dataset=="NACC",]
+png(file="../plots/upsetplot/NACC_overall_cdr_upset.png", 
+    width = 12000, height = 8000, res = 700, units = "px")
+upset(NACC_df_upset, sets= rev(med_cols_rename), 
+      # keep.order = TRUE,
+      nintersects = 30, 
+      order.by = "freq",
+      empty.intersections = "on",
+      mb.ratio=c(0.65,0.35), point.size=1, line.size=0.3)
+dev.off()
+```
+
+##HABS 
+```{r}
+HABS_df_upset <- meta_df_upset[meta_df_upset$dataset=="HABS",]
+png(file="../plots/upsetplot/HABS_overall_cdr_upset.png", 
+    width = 12000, height = 8000, res = 700, units = "px")
+upset(HABS_df_upset, sets= rev(med_cols_rename), 
+      # keep.order = TRUE,
+      nintersects = 30, 
+      order.by = "freq",
+      empty.intersections = "on",
+      mb.ratio=c(0.65,0.35), point.size=1, line.size=0.3)
+dev.off()
+```
+
+# Venn Diagram (Figure 1B)
+```{r}
+aibl_venn <- get_baseline(AIBL_full_df_consist)
+nacc_venn <- get_baseline(NACC_full_df_consist)
+habs_venn <- get_baseline(HABS_full_df_consist)
+```
+
+```{r}
+aibl_sets  <- get_sets(aibl_venn)
+nacc_sets  <- get_sets(nacc_venn)
+habs_sets  <- get_sets(habs_venn)
+
+aibl_p <- prefix_sets(aibl_sets, "AIBL")
+nacc_p  <- prefix_sets(nacc_sets,  "NACC")
+habs_p  <- prefix_sets(habs_sets,  "HABS")
+
+total_sets <- list(
+  CVD         = union(union(aibl_p$CVD,         nacc_p$CVD),         habs_p$CVD),
+  Endocrine   = union(union(aibl_p$Endocrine,   nacc_p$Endocrine),   habs_p$Endocrine),
+  Psychiatric = union(union(aibl_p$Psychiatric, nacc_p$Psychiatric), habs_p$Psychiatric)
+)
+
+total_rc <- region_counts(total_sets)
+aibl_rc  <- region_counts(aibl_sets)
+nacc_rc  <- region_counts(nacc_sets)
+habs_rc  <- region_counts(habs_sets)
+
+# ── 3. Draw fully manual symmetric Venn ───────────────────────────────────────
+png("../plots/venn/comorbidity_venn_baseline.png",
+    width = 14000, height = 14000, res = 1200, units = "px")
+
+grid.newpage()
+grid.rect(gp = gpar(fill = "white", col = NA))
+
+# ── Circle geometry (all equal radius, classic 3-circle layout) ───────────────
+r  <- 0.30          # circle radius in npc
+cx <- c(0.38, 0.62, 0.50)   # centre x: CVD (left), Endocrine (right), Psychiatric (top)
+cy <- c(0.38, 0.38, 0.62)   # centre y
+
+fill_cols   <- c("#E07B6A", "#6AAED6", "#8DBF8A")
+border_cols <- c("#C0392B", "#2471A3", "#1E8449")
+cat_names   <- c("CVD", "Endocrine", "Psychiatric")
+
+# Draw filled circles (back to front for overlap)
+for (i in 1:3) {
+  grid.circle(x  = cx[i], y = cy[i], r = r,
+              gp = gpar(fill = adjustcolor(fill_cols[i], alpha.f = 0.40),
+                        col  = border_cols[i], lwd = 6))
+}
+
+# ── Category labels (outside circles) ────────────────────────────────────────
+# CVD — bottom left
+grid.text("CVD",        x = 0.13, y = 0.28,
+          gp = gpar(fontsize = 28, fontface = "bold", col = border_cols[1]))
+# Endocrine — bottom right
+grid.text("Endocrine",  x = 0.87, y = 0.28,
+          gp = gpar(fontsize = 28, fontface = "bold", col = border_cols[2]))
+# Psychiatric — top centre
+grid.text("Psychiatric", x = 0.50, y = 0.95,
+          gp = gpar(fontsize = 28, fontface = "bold", col = border_cols[3]))
+
+# ── Helper to place a two-line label ─────────────────────────────────────────
+place_label <- function(key, x, y, total_rc, aibl_rc, nacc_rc, habs_rc) {
+  total  <- total_rc[[key]]
+  cohort <- sprintf("(AIBL=%d, NACC=%d, HABS-HD=%d)",
+                    aibl_rc[[key]], nacc_rc[[key]], habs_rc[[key]])
+  # Total: large bold
+  grid.text(as.character(total), x = x, y = y + 0.022,
+            gp = gpar(fontsize = 22, fontface = "bold", col = "black"))
+  # Cohort breakdown: small plain
+  grid.text(cohort, x = x, y = y - 0.018,
+            gp = gpar(fontsize = 12, fontface = "plain", col = "grey15"))
+}
+
+# ── Region label positions (tuned for symmetric equal-circle layout) ──────────
+#              key           x      y
+place_label("CVD",        0.26,  0.38, total_rc, aibl_rc, nacc_rc, habs_rc)
+place_label("Endo",       0.74,  0.38, total_rc, aibl_rc, nacc_rc, habs_rc)
+place_label("Psych",      0.50,  0.75, total_rc, aibl_rc, nacc_rc, habs_rc)
+place_label("CVD_Endo",   0.50,  0.30, total_rc, aibl_rc, nacc_rc, habs_rc)
+place_label("CVD_Psych",  0.35,  0.54, total_rc, aibl_rc, nacc_rc, habs_rc)
+place_label("Endo_Psych", 0.65,  0.54, total_rc, aibl_rc, nacc_rc, habs_rc)
+place_label("All",        0.50,  0.46, total_rc, aibl_rc, nacc_rc, habs_rc)
+
+# ── Title & subtitle ──────────────────────────────────────────────────────────
+grid.text("Comorbidity Overlap at Baseline",
+          x = 0.50, y = 0.985,
+          gp = gpar(fontsize = 30, fontface = "bold"))
+
+grid.text(
+  sprintf("AIBL (n=%d)   NACC (n=%d)   HABS-HD (n=%d)",
+          nrow(aibl_venn), nrow(nacc_venn), nrow(habs_venn)),
+  x = 0.50, y = 0.955,
+  gp = gpar(fontsize = 20, col = "grey40"))
+
+dev.off()
+message("Saved: ../plots/venn/comorbidity_venn_baseline.png")
+```
+
+
+# Sankey plot (Figure 1C)
+
+```{r}
+library(tidyverse)
+library(ggalluvial)
+library(conflicted)
+conflicts_prefer(dplyr::filter)
+
+aibl_sankey <- get_baseline(AIBL_full_df_consist)
+nacc_sankey <- get_baseline(NACC_full_df_consist)
+habs_sankey <- get_baseline(HABS_full_df_consist)
+
+disease_cols <- c("CVD", "Endocrine", "Psychiatric")
+med_cols_use <- med_cols_rename  # c("ACEi","ARBs","β-Blocker","CCBs","Diuretics","Statins","Metformin")
+
+# ── 2. Colours ────────────────────────────────────────────────────────────────
+disease_colors <- c(
+  "CVD"         = "#928a9d",
+  "Endocrine"   = "#ccbfde",
+  "Psychiatric" = "#f3c9ca"
+)
+
+med_colors <- c(
+  "ACEi"      = "#D4A5A5",
+  "ARBs"      = "#C0392B",
+  "β-Blocker" = "#E8A87C",
+  "CCBs"      = "#F4D03F",
+  "Diuretics" = "#A569BD",
+  "Statins"   = "#5DADE2",
+  "Metformin" = "#48C9B0"
+)
+
+# ── 3. Long format builder ────────────────────────────────────────────────────
+build_sankey_long <- function(df, cohort_name) {
+  df %>%
+    pivot_longer(cols      = all_of(disease_cols),
+                 names_to  = "disease",
+                 values_to = "has_disease") %>%
+    filter(has_disease == 1) %>%
+    pivot_longer(cols      = all_of(med_cols_use),
+                 names_to  = "medication",
+                 values_to = "takes_med") %>%
+    filter(takes_med == 1) %>%
+    count(disease, medication, name = "n") %>%
+    mutate(cohort = cohort_name)
+}
+
+aibl_long <- build_sankey_long(aibl_sankey, "AIBL")
+nacc_long  <- build_sankey_long(nacc_sankey,  "NACC")
+habs_long  <- build_sankey_long(habs_sankey,  "HABS-HD")
+
+# ── 4. Draw function ──────────────────────────────────────────────────────────
+draw_sankey <- function(long_df, cohort_name, n_total, color_by, outpath) {
+  # color_by: "disease" or "medication"
+
+  long_df <- long_df %>%
+    mutate(
+      disease    = factor(disease,    levels = c("CVD", "Endocrine", "Psychiatric")),
+      medication = factor(medication, levels = med_cols_use)
+    )
+
+  if (color_by == "disease") {
+    fill_scale <- scale_fill_manual(values = disease_colors, name = "Comorbidity")
+    fill_aes   <- aes(fill = disease)
+  } else {
+    fill_scale <- scale_fill_manual(values = med_colors, name = "Medication")
+    fill_aes   <- aes(fill = medication)
+  }
+
+  p <- ggplot(long_df,
+              aes(axis1 = disease,
+                  axis2 = medication,
+                  y     = n)) +
+    geom_alluvium(fill_aes,
+                  width = 1/6, alpha = 0.75, knot.pos = 0.4) +
+    geom_stratum(width     = 1/6,
+                 fill      = "grey93",
+                 color     = "grey55",
+                 linewidth = 0.35) +
+    geom_text(stat     = "stratum",
+              aes(label = after_stat(stratum)),
+              size      = 4.2,
+              fontface  = "bold",
+              color     = "grey20") +
+    fill_scale +
+    scale_x_discrete(limits = c("Comorbidity", "Medication"),
+                     expand = c(0.12, 0.12)) +
+    scale_y_continuous(expand = c(0.02, 0.02)) +
+    labs(
+      title    = sprintf("Comorbidity → Medication at Baseline — %s", cohort_name),
+      subtitle = sprintf("n = %d participants at baseline", n_total),
+      y        = "Number of participants"
+    ) +
+    theme_minimal(base_size = 14) +
+    theme(
+      plot.title      = element_text(face = "bold", size = 16, hjust = 0.5),
+      plot.subtitle   = element_text(size = 12, hjust = 0.5, color = "grey45"),
+      legend.position = "bottom",
+      legend.title    = element_text(face = "bold"),
+      panel.grid      = element_blank(),
+      axis.text.x     = element_text(size = 13, face = "bold", color = "grey20"),
+      axis.text.y     = element_text(size = 10),
+      axis.title.y    = element_text(size = 12)
+    )
+
+  ggsave(outpath,
+         plot   = p,
+         width  = 12,
+         height = 9,
+         dpi    = 1200,
+         units  = "in",
+         bg     = "white")
+
+  message("Saved: ", outpath)
+}
+
+# ── 5. Call per cohort — coloured by disease ──────────────────────────────────
+draw_sankey(aibl_long, "AIBL",    nrow(aibl_sankey),
+            color_by = "disease",
+            outpath  = "../plots/sankey/AIBL_sankey.png")
+
+draw_sankey(nacc_long,  "NACC",    nrow(nacc_sankey),
+            color_by = "disease",
+            outpath  = "../plots/sankey/NACC_sankey.png")
+
+draw_sankey(habs_long,  "HABS-HD", nrow(habs_sankey),
+            color_by = "disease",
+            outpath  = "../plots/sankey/HABS_sankey.png")
+
+# ── Optional: rerun coloured by medication instead ───────────────────────────
+# draw_sankey(aibl_long, "AIBL", nrow(aibl_sankey),
+#             color_by = "medication",
+#             outpath  = "../plots/sankey/AIBL_sankey_medcolor.png")
+```
+
+
+
+
+
+
+
+
+
+
+
+new version
+```{r}
+library(tidyverse)
+library(ggalluvial)
+library(conflicted)
+conflicts_prefer(dplyr::filter)
+
+aibl_sankey <- get_baseline(AIBL_full_df_consist)
+nacc_sankey <- get_baseline(NACC_full_df_consist)
+habs_sankey <- get_baseline(HABS_full_df_consist)
+
+disease_cols <- c("CVD", "Endocrine", "Psychiatric")
+med_cols <- c("ACEi", "ARBs", "β-Blocker", "CCBs", "Diuretics", "Statins", "Metformin")
+
+disease_levels <- c("CVD", "Endocrine", "Psychiatric", "Comorbidity-free")
+med_levels <- c("ACEi", "ARBs", "β-Blocker", "CCBs", "Diuretics", "Statins", "Metformin", "Non-user")
+
+disease_colors <- c(
+  "CVD" = "#928a9d",
+  "Endocrine" = "#ccbfde",
+  "Psychiatric" = "#f3c9ca",
+  "Comorbidity-free" = "#D9D9D9"
+)
+
+build_sankey_long <- function(df, cohort_name) {
+  
+  tmp <- df %>%
+    mutate(row_id = row_number()) %>%
+    select(row_id, Disease_Control, Med_Control, all_of(disease_cols), all_of(med_cols))
+  
+  disease_long <- tmp %>%
+    pivot_longer(
+      cols = all_of(disease_cols),
+      names_to = "disease",
+      values_to = "has_disease"
+    ) %>%
+    filter(has_disease == 1) %>%
+    select(row_id, disease) %>%
+    bind_rows(
+      tmp %>%
+        filter(Disease_Control == 0) %>%
+        transmute(row_id, disease = "Comorbidity-free")
+    )
+  
+  med_long <- tmp %>%
+    pivot_longer(
+      cols = all_of(med_cols),
+      names_to = "medication",
+      values_to = "takes_med"
+    ) %>%
+    filter(takes_med == 1) %>%
+    select(row_id, medication) %>%
+    bind_rows(
+      tmp %>%
+        filter(Med_Control == 0) %>%
+        transmute(row_id, medication = "Non-user")
+    )
+  
+  disease_long %>%
+    inner_join(med_long, by = "row_id", relationship = "many-to-many") %>%
+    count(disease, medication, name = "n") %>%
+    mutate(
+      cohort = cohort_name,
+      disease = factor(disease, levels = disease_levels),
+      medication = factor(medication, levels = med_levels)
+    )
+}
+
+draw_sankey <- function(long_df, source_df, cohort_name, outpath) {
+  
+  n_total <- nrow(source_df)
+  
+  p <- ggplot(
+    long_df,
+    aes(axis1 = disease, axis2 = medication, y = n)
+  ) +
+    geom_alluvium(
+      aes(fill = disease),
+      width = 1 / 6,
+      alpha = 0.75,
+      knot.pos = 0.4
+    ) +
+    geom_stratum(
+      width = 1 / 6,
+      fill = "grey93",
+      color = "grey55",
+      linewidth = 0.35
+    ) +
+    geom_text(
+      stat = "stratum",
+      aes(
+        label = case_when(
+          after_stat(x) == 1 & after_stat(stratum) == "CVD" ~ sprintf("CVD\nn=%d (%.1f%%)", sum(source_df$CVD == 1, na.rm = TRUE), 100 * sum(source_df$CVD == 1, na.rm = TRUE) / n_total),
+          after_stat(x) == 1 & after_stat(stratum) == "Endocrine" ~ sprintf("Endocrine\nn=%d (%.1f%%)", sum(source_df$Endocrine == 1, na.rm = TRUE), 100 * sum(source_df$Endocrine == 1, na.rm = TRUE) / n_total),
+          after_stat(x) == 1 & after_stat(stratum) == "Psychiatric" ~ sprintf("Psychiatric\nn=%d (%.1f%%)", sum(source_df$Psychiatric == 1, na.rm = TRUE), 100 * sum(source_df$Psychiatric == 1, na.rm = TRUE) / n_total),
+          # after_stat(x) == 1 & after_stat(stratum) == "Comorbidity-free" ~ sprintf("Comorbidity-free\nn=%d (%.1f%%)", sum(source_df$Disease_Control == 0, na.rm = TRUE), 100 * sum(source_df$Disease_Control == 0, na.rm = TRUE) / n_total),
+        after_stat(x) == 1 & after_stat(stratum) == "Comorbidity-free" ~ sprintf("Comorbidity-free\nn=%d (%.1f%%)", sum(source_df$Disease_Control == 0, na.rm = TRUE), 100 * sum(source_df$Disease_Control == 0, na.rm = TRUE) / n_total),          after_stat(x) == 2 & after_stat(stratum) == "ACEi" ~ sprintf("ACEi\nn=%d (%.1f%%)", sum(source_df$ACEi == 1, na.rm = TRUE), 100 * sum(source_df$ACEi == 1, na.rm = TRUE) / n_total),
+          after_stat(x) == 2 & after_stat(stratum) == "ARBs" ~ sprintf("ARBs\nn=%d (%.1f%%)", sum(source_df$ARBs == 1, na.rm = TRUE), 100 * sum(source_df$ARBs == 1, na.rm = TRUE) / n_total),
+          after_stat(x) == 2 & after_stat(stratum) == "β-Blocker" ~ sprintf("β-Blocker\nn=%d (%.1f%%)", sum(source_df$`β-Blocker` == 1, na.rm = TRUE), 100 * sum(source_df$`β-Blocker` == 1, na.rm = TRUE) / n_total),
+          after_stat(x) == 2 & after_stat(stratum) == "CCBs" ~ sprintf("CCBs\nn=%d (%.1f%%)", sum(source_df$CCBs == 1, na.rm = TRUE), 100 * sum(source_df$CCBs == 1, na.rm = TRUE) / n_total),
+          after_stat(x) == 2 & after_stat(stratum) == "Diuretics" ~ sprintf("Diuretics\nn=%d (%.1f%%)", sum(source_df$Diuretics == 1, na.rm = TRUE), 100 * sum(source_df$Diuretics == 1, na.rm = TRUE) / n_total),
+          after_stat(x) == 2 & after_stat(stratum) == "Statins" ~ sprintf("Statins\nn=%d (%.1f%%)", sum(source_df$Statins == 1, na.rm = TRUE), 100 * sum(source_df$Statins == 1, na.rm = TRUE) / n_total),
+          after_stat(x) == 2 & after_stat(stratum) == "Metformin" ~ sprintf("Metformin\nn=%d (%.1f%%)", sum(source_df$Metformin == 1, na.rm = TRUE), 100 * sum(source_df$Metformin == 1, na.rm = TRUE) / n_total),
+          after_stat(x) == 2 & after_stat(stratum) == "Non-user" ~ sprintf("Non-user\nn=%d (%.1f%%)", sum(source_df$Med_Control == 0, na.rm = TRUE), 100 * sum(source_df$Med_Control == 0, na.rm = TRUE) / n_total),
+          TRUE ~ as.character(after_stat(stratum))
+        )
+      ),
+      size = 3.0,
+      fontface = "bold",
+      color = "grey20"
+    ) +
+    scale_fill_manual(values = disease_colors, name = "Comorbidity") +
+    scale_x_discrete(
+      limits = c("Comorbidity", "Medication"),
+      expand = c(0.12, 0.12)
+    ) +
+    labs(
+      title = sprintf("Comorbidity → Medication at Baseline — %s", cohort_name),
+      subtitle = sprintf("n = %d participants at baseline", n_total),
+      y = "Number of disease-medication links"
+    ) +
+    theme_minimal(base_size = 14) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+      plot.subtitle = element_text(size = 10, hjust = 0.5, color = "grey45"),
+      legend.position = "bottom",
+      legend.title = element_text(face = "bold"),
+      panel.grid = element_blank(),
+      axis.text.x = element_text(size = 13, face = "bold", color = "grey20"),
+      axis.text.y = element_text(size = 10),
+      axis.title.y = element_text(size = 12)
+    )
+  
+  ggsave(outpath, plot = p, width = 12, height = 12, dpi = 900, units = "in", bg = "white")
+  message("Saved: ", outpath)
+}
+
+aibl_long <- build_sankey_long(aibl_sankey, "AIBL")
+nacc_long <- build_sankey_long(nacc_sankey, "NACC")
+habs_long <- build_sankey_long(habs_sankey, "HABS-HD")
+
+draw_sankey(aibl_long, aibl_sankey, "AIBL", "../plots/sankey/AIBL_sankey.png")
+draw_sankey(nacc_long, nacc_sankey, "NACC", "../plots/sankey/NACC_sankey.png")
+draw_sankey(habs_long, habs_sankey, "HABS-HD", "../plots/sankey/HABS_sankey.png")
+```
+
+```{r}
+disease_cols <- c("CVD", "Endocrine", "Psychiatric")
+med_cols_use <- med_cols_rename
+cat("Medication check:", all(rowSums(aibl_sankey[aibl_sankey$Med_Control == 0, med_cols_use, drop = FALSE], na.rm = TRUE) == 0), "\nDisease check:", all(rowSums(aibl_sankey[aibl_sankey$Disease_Control == 0, disease_cols, drop = FALSE], na.rm = TRUE) == 0), "\n")
+```
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PART 2 — DENSITY PLOTS (one file per group per cohort)
+# ═══════════════════════════════════════════════════════════════════════════════
+```{r}
+library(tidyverse)
+
+med_cols <- c("ACEi", "ARBs", "β-Blocker", "CCBs", "Diuretics", "Statins", "Metformin")
+disease_cols <- c("CVD", "Endocrine", "Psychiatric")
+
+make_age_summary_table <- function(df, cohort_name) {
+  bind_rows(
+    df %>%
+      pivot_longer(all_of(med_cols), names_to = "group", values_to = "yes") %>%
+      filter(yes == 1) %>%
+      group_by(group) %>%
+      summarise(n = n(), mean_age = mean(age, na.rm = TRUE), sd_age = sd(age, na.rm = TRUE), .groups = "drop") %>%
+      mutate(type = "Medication"),
+    
+    df %>%
+      filter(Med_Control == 0) %>%
+      summarise(group = "Non-user", n = n(), mean_age = mean(age, na.rm = TRUE), sd_age = sd(age, na.rm = TRUE)) %>%
+      mutate(type = "Medication"),
+    
+    df %>%
+      pivot_longer(all_of(disease_cols), names_to = "group", values_to = "yes") %>%
+      filter(yes == 1) %>%
+      group_by(group) %>%
+      summarise(n = n(), mean_age = mean(age, na.rm = TRUE), sd_age = sd(age, na.rm = TRUE), .groups = "drop") %>%
+      mutate(type = "Comorbidity"),
+    
+    df %>%
+      filter(Disease_Control == 0) %>%
+      summarise(group = "Comorbidity-free", n = n(), mean_age = mean(age, na.rm = TRUE), sd_age = sd(age, na.rm = TRUE)) %>%
+      mutate(type = "Comorbidity")
+  ) %>%
+    mutate(cohort = cohort_name, mean_sd = sprintf("%.2f ± %.2f", mean_age, sd_age)) %>%
+    select(cohort, type, group, n, mean_sd)
+}
+
+age_summary_table <- bind_rows(
+  make_age_summary_table(aibl_sankey, "AIBL"),
+  make_age_summary_table(nacc_sankey, "NACC"),
+  make_age_summary_table(habs_sankey, "HABS-HD")
+)
+
+age_summary_table
+```
+
