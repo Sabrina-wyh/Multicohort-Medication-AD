@@ -19,25 +19,34 @@ source("plots.R")
 
 ```{r}
 med_cols<-c("ACEi","ARB","BetaBlk","CCB","Diuretic","Metformin","Statin")
+disease_cols <-c('CVD', 'Endocrine', 'Psychiatric')
 ```
 
 #### AIBL
 ```{r}
-AIBL_full_df <- read.csv("../preprocessed_data/AIBL/AIBL_merge_full_missing.csv")
+AIBL_full_df <- read.csv("../preprocessed_data/AIBL/AIBL_merge_full_missing.csv",na.strings = c("", "NA", " "))
 ```
 
-CDR
 ```{r}
 AIBL_full_df_cdr<-clean_by_measure(AIBL_full_df, 'CDR')
+AIBL_full_df_cdr <- bool_to_binary(AIBL_full_df_cdr, c(med_cols,disease_cols))
 missing_summary(AIBL_full_df_cdr)
 AIBL_full_df_cdr_imputed<- missranger_impute(AIBL_full_df_cdr, c('id', 'status'))
 AIBL_full_df_cdr_imputed<- enforce_static_and_reindex(AIBL_full_df_cdr_imputed, id_col="id", visit_col="visit_no", static_cols=c("sex", "edu","APOE4"), prefer_non_na=TRUE)
-write.csv(AIBL_full_df_cdr_imputed, "../preprocessed_data/AIBL/AIBL_cdr_imputed.csv", row.names = FALSE)
+AIBL_full_df_cdr_imputed <- propagate_baseline_comorbidities(AIBL_full_df_cdr_imputed, output_type='binary')
+write.csv(AIBL_full_df_cdr_imputed, "../preprocessed_data/AIBL/AIBL_cdr_imputed_binary.csv", row.names = FALSE)
 ```
 
 ```{r}
-AIBL_full_df_cdr_imputed_binary <- bool_to_binary(AIBL_full_df_cdr_imputed, med_cols)
-write.csv(AIBL_full_df_cdr_imputed_binary, "../preprocessed_data/AIBL/AIBL_cdr_imputed_binary.csv", row.names = FALSE)
+##   1. Fixing comorbidity columns to reflect baseline visit values only
+##      (a participant's comorbidity status is determined at their first visit)
+##   2. Fixing medication columns so that if a participant was ever on a
+##      medication across any visit, all their visits are marked as 1/TRUE
+AIBL_full_df_cdr_imputed_binary2 <- clean_longitudinal_data(AIBL_full_df_cdr_imputed,
+  comorbidity_type = "binary",
+  medication_type  = "binary",
+  control_type     = "binary")
+write.csv(AIBL_full_df_cdr_imputed_binary2, "../preprocessed_data/AIBL/AIBL_cdr_imputed_binary_consist.csv", row.names = FALSE)
 ```
 
 ```{r}
@@ -47,22 +56,27 @@ summarize_data(AIBL_full_df_cdr_imputed)
 
 ### NACC
 ```{r}
-NACC_full_df <- read.csv("../preprocessed_data/NACC/NACC_merge_full_missing.csv")
+NACC_full_df <- read.csv("../preprocessed_data/NACC/NACC_merge_full_missing.csv",na.strings = c("", "NA", " "))
 ```
 
 
 CDR
 ```{r}
 NACC_full_df_cdr<-clean_by_measure(NACC_full_df, 'CDR')
+NACC_full_df_cdr <- bool_to_binary(NACC_full_df_cdr, c(med_cols,disease_cols))
 missing_summary(NACC_full_df_cdr)
 NACC_full_df_cdr_imputed<- missranger_impute(NACC_full_df_cdr, c('id', 'status'))
 NACC_full_df_cdr_imputed<- enforce_static_and_reindex(NACC_full_df_cdr_imputed, id_col="id", visit_col="visit_no", static_cols=c("sex", "edu","APOE4"), prefer_non_na=TRUE)
-write.csv(NACC_full_df_cdr_imputed, "../preprocessed_data/NACC/NACC_cdr_imputed.csv", row.names = FALSE)
+NACC_full_df_cdr_imputed <- propagate_baseline_comorbidities(NACC_full_df_cdr_imputed, output_type='binary')
+write.csv(NACC_full_df_cdr_imputed, "../preprocessed_data/NACC/NACC_cdr_imputed_binary.csv", row.names = FALSE)
 ```
 
 ```{r}
-NACC_full_df_cdr_imputed_binary <- bool_to_binary(NACC_full_df_cdr_imputed, med_cols)
-write.csv(NACC_full_df_cdr_imputed_binary, "../preprocessed_data/NACC/NACC_cdr_imputed_binary.csv", row.names = FALSE)
+NACC_full_df_cdr_imputed_binary2 <- clean_longitudinal_data(NACC_full_df_cdr_imputed,
+  comorbidity_type = "binary",
+  medication_type  = "binary",
+  control_type     = "binary")
+write.csv(NACC_full_df_cdr_imputed_binary2, "../preprocessed_data/NACC/NACC_cdr_imputed_binary_consist.csv", row.names = FALSE)
 ```
 
 ```{r}
@@ -71,22 +85,27 @@ summarize_data(NACC_full_df_cdr_imputed)
 
 ### HABS
 ```{r}
-HABS_full_df <- read.csv("../preprocessed_data/HABSHD/HABSHD_merge_full_missing.csv")
+HABS_full_df <- read.csv("../preprocessed_data/HABSHD/HABSHD_merge_full_missing.csv",na.strings = c("", "NA", " "))
 ```
 
 
 CDR
 ```{r}
 HABS_full_df_cdr<-clean_by_measure(HABS_full_df, 'CDR')
+HABS_full_df_cdr <- bool_to_binary(HABS_full_df_cdr, c(med_cols,disease_cols))
 missing_summary(HABS_full_df_cdr)
 HABS_full_df_cdr_imputed<- missranger_impute(HABS_full_df_cdr, c('id', 'status'))
 HABS_full_df_cdr_imputed<- enforce_static_and_reindex(HABS_full_df_cdr_imputed, id_col="id", visit_col="visit_no", static_cols=c("sex", "edu","APOE4"), prefer_non_na=TRUE)
-write.csv(HABS_full_df_cdr_imputed, "../preprocessed_data/HABSHD/HABSHD_cdr_imputed.csv", row.names = FALSE)
+HABS_full_df_cdr_imputed <- propagate_baseline_comorbidities(HABS_full_df_cdr_imputed, output_type='binary')
+write.csv(HABS_full_df_cdr_imputed, "../preprocessed_data/HABSHD/HABSHD_cdr_imputed_binary.csv", row.names = FALSE)
 ```
 
 ```{r}
-HABS_full_df_cdr_imputed_binary <- bool_to_binary(HABS_full_df_cdr_imputed, med_cols)
-write.csv(HABS_full_df_cdr_imputed_binary, "../preprocessed_data/HABSHD/HABSHD_cdr_imputed_binary.csv", row.names = FALSE)
+HABS_full_df_cdr_imputed_binary2 <- clean_longitudinal_data(HABS_full_df_cdr_imputed,
+  comorbidity_type = "binary",
+  medication_type  = "binary",
+  control_type     = "binary")
+write.csv(HABS_full_df_cdr_imputed_binary2, "../preprocessed_data/HABSHD/HABSHD_cdr_imputed_binary_consist.csv", row.names = FALSE)
 ```
 
 ```{r}
@@ -95,9 +114,6 @@ summarize_data(HABS_full_df_cdr_imputed)
 
 
 ### Meta
-for upsetplot only
-
-CDR
 ```{r}
 AIBL_full_df_cdr_upset<-make_ids_unique(AIBL_full_df_cdr_imputed, 'AIBL')
 NACC_full_df_cdr_upset<-make_ids_unique(NACC_full_df_cdr_imputed, 'NACC')
@@ -105,60 +121,19 @@ HABS_full_df_cdr_upset<-make_ids_unique(HABS_full_df_cdr_imputed, 'HABS')
 ```
 
 ```{r}
-meta_df_cdr_upset <- bind_rows(
+meta_df_cdr_meta <- bind_rows(
   mutate(AIBL_full_df_cdr_upset, dataset = "AIBL"),
   mutate(NACC_full_df_cdr_upset, dataset = "NACC"),
   mutate(HABS_full_df_cdr_upset, dataset = "HABS")
 )
-meta_df_cdr_upset <- bool_to_binary(meta_df_cdr_upset, med_cols)
-write.csv(meta_df_cdr_upset, "../preprocessed_data/meta/meta_cdr_upset.csv", row.names = FALSE)
-```
-
-
-
-for meta analysis
-```{r}
-set.seed(42)
-NACC_select <- NACC_full_df_cdr_upset[NACC_full_df_cdr_upset$id %in% sample(unique(NACC_full_df_cdr_upset$id), 1700), ]
-write.csv(NACC_select, "../preprocessed_data/meta/NACC_select.csv", row.names = FALSE)
+meta_df_cdr_meta <- bool_to_binary(meta_df_cdr_meta, c(med_cols,disease_cols))
+write.csv(meta_df_cdr_meta, "../preprocessed_data/meta/meta_analysis_cdr_binary.csv", row.names = FALSE)
 ```
 
 ```{r}
-meta_df_cdr_meta <- bind_rows(
-  mutate(AIBL_full_df_cdr_upset, dataset = "AIBL"),
-  mutate(NACC_select, dataset = "NACC"),
-  mutate(HABS_full_df_cdr_upset, dataset = "HABS")
-)
-# meta_df_cdr_meta <- bool_to_binary(meta_df_cdr_meta, med_cols)
-write.csv(meta_df_cdr_meta, "../preprocessed_data/meta/meta_analysis_cdr.csv", row.names = FALSE)
-```
-
-# no NACC
-```{r}
-meta_df_withoutNACC <- bind_rows(
-  mutate(AIBL_full_df_cdr_upset, dataset = "AIBL"),
-  mutate(HABS_full_df_cdr_upset, dataset = "HABS")
-)
-# meta_df_withoutNACC <- bool_to_binary(meta_df_withoutNACC, med_cols)
-write.csv(meta_df_withoutNACC, "../preprocessed_data/meta/meta_analysis_noNACC.csv", row.names = FALSE)
-```
-
-# no AIBL
-```{r}
-meta_df_withoutAIBL<- bind_rows(
-  mutate(NACC_select, dataset = "NACC"),
-  mutate(HABS_full_df_cdr_upset, dataset = "HABS")
-)
-# meta_df_withoutAIBL <- bool_to_binary(meta_df_withoutAIBL, med_cols)
-write.csv(meta_df_withoutAIBL, "../preprocessed_data/meta/meta_analysis_noAIBL.csv", row.names = FALSE)
-```
-
-# no HABS
-```{r}
-meta_df_cdr_withoutHABS <- bind_rows(
-  mutate(AIBL_full_df_cdr_upset, dataset = "AIBL"),
-  mutate(NACC_select, dataset = "NACC")
-)
-# meta_df_cdr_withoutHABS <- bool_to_binary(meta_df_cdr_withoutHABS, med_cols)
-write.csv(meta_df_cdr_withoutHABS, "../preprocessed_data/meta/meta_analysis_noHABS.csv", row.names = FALSE)
+meta_df_cdr_binary2 <- clean_longitudinal_data(meta_df_cdr_meta,
+  comorbidity_type = "binary",
+  medication_type  = "binary",
+  control_type     = "binary")
+write.csv(meta_df_cdr_binary2, "../preprocessed_data/meta/meta_analysis_cdr_imputed_binary_consist.csv", row.names = FALSE)
 ```
