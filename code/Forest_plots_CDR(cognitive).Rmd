@@ -482,8 +482,8 @@ dt_cog = make_dt_from_fits(
     `Overall` = list(fit_full_NACC, fit_full_AIBL, fit_full_HABS),
     `Non-progression`     = list(fit_NACC_NON_PROG,   fit_AIBL_NON_PROG,   fit_HABS_NON_PROG),
     `CU-MCI progression`   = list(fit_NACC_CU_MCI_PROG,   fit_AIBL_CU_MCI_PROG,   fit_HABS_CU_MCI_PROG),
-    `CU/MCI-AD progression`     = list(fit_NACC_TO_AD_PROG,   fit_AIBL_TO_AD_PROG,   fit_HABS_TO_AD_PROG),
-    `AD`   = list(fit_NACC_AD,   fit_AIBL_AD,   fit_HABS_AD)
+    `CU/MCI-ADem progression`     = list(fit_NACC_TO_AD_PROG,   fit_AIBL_TO_AD_PROG,   fit_HABS_TO_AD_PROG),
+    `ADem-stable`   = list(fit_NACC_AD,   fit_AIBL_AD,   fit_HABS_AD)
   ),
   term= terms_all,
   cohorts = c("NACC","AIBL","HABS"),
@@ -518,7 +518,7 @@ plot_forest_stratification_meta_expanded2(
   interaction_only = TRUE,  # Set to TRUE if you only want to plot the drug * time rows
   
   # Group tracking parameters for the 5 parallel blocks
-  prog_groups      = c("Overall", "Non-progression", "CU-MCI progression", "CU/MCI-AD progression", "AD"),
+  prog_groups      = c("Overall", "Non-progression", "CU-MCI progression", "CU/MCI-ADem progression", "ADem-stable"),
   group_colors     = c("#2F4F4F", "#BB9393", "#FEAD76", "#E64B35", "#756BB1"),
   
   # Custom x-axis window boundaries for each of your 5 clinical group columns
