@@ -10,9 +10,11 @@ library(stringr)
 library(scales)
 library(meta)
 library(metafor)
+
+
+med_cols_rename <-c("ACEi","ARBs","β-Blocker","CCBs","Diuretics","Statins","Metformin")
+
 ############## general description ##############
-
-
 ###### Upset ######
 # helper: coerce medication columns to logical
 bool_to_binary <- function(df, cols) {
@@ -59,323 +61,920 @@ make_ids_unique <- function(df, cohort_name, id_col = "id") {
     mutate(!!id_col := paste0(cohort_name, "-", .data[[id_col]]))
 }
 
+###### Venn Diagram
+get_baseline <- function(df) {
+  df %>% filter(visit_no == 1) %>% distinct(id, .keep_all = TRUE)
+}
 
-###### interacton heatmap 
-# ============================================================
-# make_participant_summary()
-# - Computes annualized change via baseline_last for a chosen outcome (MMSE/CDR/etc.)
-# - Produces one row per id with either:
-#     * "baseline" values for med_cols + demo_cols, or
-#     * "overall" (ever/first non-missing) collapsed values
-# - med_cols can be a character vector or a data.frame (names() taken).
-# ============================================================
+get_sets <- function(df) {
+  list(
+    CVD         = df$id[df$CVD         == 1],
+    Endocrine   = df$id[df$Endocrine   == 1],
+    Psychiatric = df$id[df$Psychiatric == 1]
+  )
+}
 
-# make_participant_summary <- function(
-#     df,
-#     id_col        = "id",
-#     time_col      = "months_since_baseline",
-#     visit_col     = NULL,                # optional; if NULL uses time_col to find baseline
-#     dataset_col   = NULL,                # OPTIONAL now
-#     value_col     = "MMSE",              # e.g., "MMSE" or "CDR"
-#     out_col       = NULL,                # e.g., "dMMSE_per_year" / "dCDR_per_year"
-#     med_cols      = NULL,                # char vec OR data.frame (names taken)
-#     demo_cols     = NULL,                # char vec of demographic columns
-#     collapse_mode = c("baseline","overall"),  # how to summarize med+demo across visits
-#     na_to_zero_meds = TRUE               # NA meds→0 before collapsing when "overall"
-# ) {
-#   collapse_mode <- match.arg(collapse_mode)
-#   if (is.null(out_col)) out_col <- paste0("d", value_col, "_per_year")
+prefix_sets <- function(sets, prefix) {
+  lapply(sets, function(ids) paste0(prefix, "_", ids))
+}
+
+region_counts <- function(sets) {
+  C <- sets$CVD; E <- sets$Endocrine; P <- sets$Psychiatric
+  list(
+    CVD        = length(setdiff(C, union(E, P))),
+    Endo       = length(setdiff(E, union(C, P))),
+    Psych      = length(setdiff(P, union(C, E))),
+    CVD_Endo   = length(setdiff(intersect(C, E), P)),
+    CVD_Psych  = length(setdiff(intersect(C, P), E)),
+    Endo_Psych = length(setdiff(intersect(E, P), C)),
+    All        = length(intersect(intersect(C, E), P))
+  )
+}
+
+
+
+
+
+### Sankey
+build_sankey_data <- function(df, cohort_name) {
+  n_total <- nrow(df)
+  
+  # ── left axis ─────────────────────────────────────────────────────────────
+  # Healthy = Disease_Control == 1 (mutually exclusive from disease nodes)
+  # Disease nodes: only people who are NOT healthy controls
+  left_long <- bind_rows(
+    df %>%
+      filter(Disease_Control == 0) %>%          # ← exclude healthy from disease nodes
+      pivot_longer(all_of(disease_cols),
+                   names_to  = "left_node",
+                   values_to = "v") %>%
+      filter(v == 1),
+    df %>%
+      filter(Disease_Control == 1) %>%
+      mutate(left_node = "Healthy", v = 1)
+  )
+  
+  # ── right axis ────────────────────────────────────────────────────────────
+  # Medications can overlap (one person in multiple med nodes — expected)
+  # Non-user = Med_Control == 1
+  right_long <- bind_rows(
+    df %>%
+      pivot_longer(all_of(med_cols_use),
+                   names_to  = "right_node",
+                   values_to = "v") %>%
+      filter(v == 1),
+    df %>%
+      filter(Med_Control == 1) %>%
+      mutate(right_node = "Non-user", v = 1)
+  )
+  
+  # ── percentage labels ──────────────────────────────────────────────────────
+  # Left: Healthy is mutually exclusive so sum = 100% is meaningful
+  # Right: medications overlap so sum > 100% is expected — label accordingly
+  left_pcts <- left_long %>%
+    distinct(id, left_node) %>%
+    count(left_node) %>%
+    mutate(
+      pct   = round(100 * n / n_total, 1),
+      label = sprintf("%s\n(%.1f%%)", left_node, pct)
+    )
+  
+  right_pcts <- right_long %>%
+    distinct(id, right_node) %>%
+    count(right_node) %>%
+    mutate(
+      pct   = round(100 * n / n_total, 1),
+      label = sprintf("%s\n(%.1f%%)", right_node, pct)
+    )
+  
+  # ── flows ─────────────────────────────────────────────────────────────────
+  flow <- left_long %>%
+    select(id, left_node) %>%
+    inner_join(right_long %>% select(id, right_node), by = "id") %>%
+    count(left_node, right_node, name = "n") %>%
+    left_join(left_pcts  %>% select(left_node,  label), by = "left_node") %>%
+    rename(left_label  = label) %>%
+    left_join(right_pcts %>% select(right_node, label), by = "right_node") %>%
+    rename(right_label = label) %>%
+    mutate(
+      left_axis = factor(left_label, levels = c(
+        left_pcts %>% filter(left_node != "Healthy") %>% pull(label),
+        left_pcts %>% filter(left_node == "Healthy") %>% pull(label)
+      )),
+      right_axis = factor(right_label, levels = c(
+        right_pcts %>% filter(right_node != "Non-user") %>% pull(label),
+        right_pcts %>% filter(right_node == "Non-user") %>% pull(label)
+      ))
+    )
+  
+  # ── subtitle note ─────────────────────────────────────────────────────────
+  nonuser_pct <- right_pcts %>%
+    filter(right_node == "Non-user") %>%
+    pull(pct)
+  
+  nonuser_txt <- sprintf("Non-user: %.1f%%  |  medication %% sum >100%% due to overlap",
+                         nonuser_pct)
+  
+  list(
+    flow        = flow,
+    left_pcts   = left_pcts,
+    right_pcts  = right_pcts,
+    nonuser_txt = nonuser_txt,
+    n_total     = n_total,
+    cohort      = cohort_name
+  )
+}
+
+make_sankey <- function(data_list, outpath, dpi=300) {
+  d <- data_list
+  
+  # Colour lookup mapped to labelled factor levels
+  all_left_colors <- setNames(
+    disease_colors[d$left_pcts$left_node],
+    d$left_pcts$label
+  )
+  
+  p <- ggplot(d$flow,
+              aes(axis1 = left_axis, axis2 = right_axis, y = n)) +
+    geom_alluvium(aes(fill = left_axis),
+                  width = 1/6, alpha = 0.72, knot.pos = 0.4) +
+    geom_stratum(width = 1/6, fill = "grey93",
+                 color = "grey50", linewidth = 0.3) +
+    geom_text(stat = "stratum",
+              aes(label = after_stat(stratum)),
+              size = 3.5, fontface = "bold",
+              color = "grey15", lineheight = 0.88) +
+    scale_fill_manual(values = all_left_colors, name = "Left node") +
+    scale_x_discrete(limits = c("Comorbidity / Health", "Medication"),
+                     expand = c(0.13, 0.13)) +
+    scale_y_continuous(expand = c(0.02, 0.02)) +
+    labs(
+      title    = sprintf("Comorbidity → Medication at Baseline — %s", d$cohort),
+      subtitle = sprintf("n = %d participants  |  %s", d$n_total, d$nonuser_txt),
+      y        = "Number of participants"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      plot.title       = element_text(face = "bold", size = 15, hjust = 0.5),
+      plot.subtitle    = element_text(size = 9, hjust = 0.5, color = "grey45"),
+      legend.position  = "none",     # labels already on strata
+      panel.grid       = element_blank(),
+      axis.text.x      = element_text(size = 12, face = "bold", color = "grey20"),
+      axis.text.y      = element_text(size = 9),
+      axis.title.y     = element_text(size = 11),
+      plot.margin      = margin(10, 20, 10, 20)
+    )
+  
+  ggsave(outpath, plot = p, width = 14, height = 10,
+         dpi = 300, units = "in", bg = "white")
+  message("Saved: ", outpath)
+  invisible(p)
+}
+
+
+add_age_group <- function(df) {
+  df %>% mutate(age_group = cut(age,
+                                breaks = c(-Inf, 59, 69, 79, Inf),
+                                labels = c("<60", "60-69", "70-79", "80+"),
+                                right = TRUE, include.lowest = TRUE))
+}
+
+
+
+
+
+
+# get_baseline <- function(df, id_col = "id") {
+#   df %>%
+#     filter(visit_no == 1) %>%
+#     distinct(across(all_of(id_col)), .keep_all = TRUE)
+# }
 # 
-#   # Normalize columns input
-#   if (is.data.frame(med_cols))  med_cols  <- names(med_cols)
-#   if (is.null(med_cols))         med_cols  <- character(0)
-#   if (is.null(demo_cols))        demo_cols <- character(0)
+# get_sets <- function(df, id_col = "id") {
+#   list(
+#     CVD        = df[[id_col]][df$CVD         == 1],
+#     Endocrine  = df[[id_col]][df$Endocrine   == 1],
+#     Psychiatric= df[[id_col]][df$Psychiatric == 1]
+#   )
+# }
 # 
-#   # Do we have a dataset column to keep?
-#   use_dataset <- !is.null(dataset_col) && dataset_col %in% names(df)
+# prefix_sets <- function(sets, prefix) {
+#   lapply(sets, function(ids) paste0(prefix, "_", ids))
+# }
 # 
-#   # Check required columns
-#   required <- c(id_col, time_col, value_col, med_cols, demo_cols)
-#   if (use_dataset) required <- c(required, dataset_col)
-#   miss <- setdiff(unique(required), names(df))
-#   if (length(miss)) stop("Missing columns: ", paste(miss, collapse = ", "))
-# 
-#   # Keep only needed columns
-#   keep_cols <- unique(c(id_col, time_col, value_col, med_cols, demo_cols,
-#                         if (use_dataset) dataset_col,
-#                         if (!is.null(visit_col)) visit_col))
-#   dat <- df[, keep_cols, drop = FALSE]
-# 
-#   # Basic typing
-#   dat[[id_col]]    <- as.character(dat[[id_col]])
-#   dat[[time_col]]  <- as.numeric(dat[[time_col]])
-#   dat[[value_col]] <- as.numeric(dat[[value_col]])
-#   if (!is.null(visit_col)) dat[[visit_col]] <- as.numeric(dat[[visit_col]])
-# 
-#   # ---------- 1) Annualized change (baseline_last) ----------
-#   # Define baseline/last by visit if provided, else by time
-#   if (is.null(visit_col)) {
-#     dat <- dplyr::arrange(dat, .data[[id_col]], .data[[time_col]])
-#   } else {
-#     dat <- dplyr::arrange(dat, .data[[id_col]], .data[[visit_col]])
-#   }
-# 
-#   slopes <- dat |>
-#     dplyr::group_by(.data[[id_col]]) |>
-#     dplyr::summarise(
-#       n_visits   = dplyr::n(),
-#       t0         = dplyr::first(.data[[time_col]])/12,
-#       t1         = dplyr::last(.data[[time_col]])/12,
-#       y0         = dplyr::first(.data[[value_col]]),
-#       y1         = dplyr::last(.data[[value_col]]),
-#       years_span = pmax(0, t1 - t0),
-#       !!out_col  := dplyr::if_else(years_span > 0, (y1 - y0)/years_span, NA_real_),
-#       .groups = "drop"
-#     )
-# 
-#   # ---------- 2) Summarise med_cols + demo_cols (baseline OR overall) ----------
-#   # helper: pick baseline row per id
-#   select_baseline_row <- function(d) {
-#     if (!is.null(visit_col)) {
-#       d |>
-#         dplyr::arrange(.data[[visit_col]]) |>
-#         dplyr::slice(1)
-#     } else {
-#       d |>
-#         dplyr::arrange(.data[[time_col]]) |>
-#         dplyr::slice(1)
-#     }
-#   }
-# 
-#   # helper: first non-missing
-#   first_non_missing <- function(x) {
-#     idx <- which(!is.na(x))[1]
-#     if (length(idx) == 0) NA else x[idx]
-#   }
-# 
-#   summary_cols <- c(id_col, med_cols, demo_cols, if (use_dataset) dataset_col)
-# 
-#   if (collapse_mode == "baseline") {
-#     summary_tbl <- dat |>
-#       dplyr::group_by(.data[[id_col]]) |>
-#       dplyr::group_modify(~select_baseline_row(.x)) |>
-#       dplyr::ungroup() |>
-#       dplyr::select(dplyr::all_of(summary_cols))
-# 
-#     # Coerce meds to 0/1
-#     if (length(med_cols)) {
-#       summary_tbl <- summary_tbl |>
-#         dplyr::mutate(dplyr::across(dplyr::all_of(med_cols), ~ as.integer(.x > 0)))
-#     }
-# 
-#   } else { # "overall"
-#     tmp <- dat |>
-#       dplyr::select(dplyr::all_of(summary_cols))
-# 
-#     # Coerce med cols to 0/1, and optionally set NA->0 before collapsing
-#     if (length(med_cols)) {
-#       if (na_to_zero_meds) {
-#         tmp <- tmp |>
-#           dplyr::mutate(dplyr::across(dplyr::all_of(med_cols),
-#                                       ~ as.integer(replace(.x, is.na(.x), 0) > 0)))
-#       } else {
-#         tmp <- tmp |>
-#           dplyr::mutate(dplyr::across(dplyr::all_of(med_cols), ~ as.integer(.x > 0)))
-#       }
-#     }
-# 
-#     summary_tbl <- tmp |>
-#       dplyr::group_by(.data[[id_col]]) |>
-#       dplyr::summarise(
-#         !!!(if (use_dataset) rlang::list2(!!dataset_col := dplyr::first(.data[[dataset_col]])) else rlang::list2()),
-#         dplyr::across(dplyr::all_of(med_cols), ~ max(.x, na.rm = TRUE)),
-#         dplyr::across(dplyr::all_of(demo_cols), ~ first_non_missing(.x)),
-#         .groups = "drop"
-#       )
-#   }
-# 
-#   # Factorize dataset only if present
-#   if (use_dataset && dataset_col %in% names(summary_tbl)) {
-#     summary_tbl[[dataset_col]] <- as.factor(summary_tbl[[dataset_col]])
-#   }
-# 
-#   # ---------- 3) Merge & return ----------
-#   # Note: 'slopes' keeps the original id column name (id_col)
-#   out <- dplyr::left_join(summary_tbl, slopes, by = id_col) |>
-#     as.data.frame()
-# 
-#   out
+# region_counts <- function(sets) {
+#   C <- sets$CVD; E <- sets$Endocrine; P <- sets$Psychiatric
+#   list(
+#     CVD         = length(setdiff(C, union(E, P))),
+#     Endo        = length(setdiff(E, union(C, P))),
+#     Psych       = length(setdiff(P, union(C, E))),
+#     CVD_Endo    = length(setdiff(intersect(C, E), P)),
+#     CVD_Psych   = length(setdiff(intersect(C, P), E)),
+#     Endo_Psych  = length(setdiff(intersect(E, P), C)),
+#     All         = length(intersect(intersect(C, E), P))
+#   )
 # }
 # 
 # 
+# region_counts <- function(sets) {
+#   C <- sets$CVD; E <- sets$Endocrine; P <- sets$Psychiatric
+#   list(
+#     CVD         = length(setdiff(C, union(E, P))),
+#     Endo        = length(setdiff(E, union(C, P))),
+#     Psych       = length(setdiff(P, union(C, E))),
+#     CVD_Endo    = length(setdiff(intersect(C, E), P)),
+#     CVD_Psych   = length(setdiff(intersect(C, P), E)),
+#     Endo_Psych  = length(setdiff(intersect(E, P), C)),
+#     All         = length(intersect(intersect(C, E), P))
+#   )
+# }
 # 
-.effect_one_group <- function(data, meds, outcome = "dMMSE_per_year",
-                              covars = c("age"), group_label = "All") {
-  stopifnot(outcome %in% names(data))
-  map_dfr(meds, function(m) {
-    if (!m %in% names(data) || dplyr::n_distinct(data[[m]]) < 2) {
-      tibble(med = m, beta = NA_real_, p = NA_real_)
-    } else {
-      rhs <- paste(c(sprintf("`%s`", m), covars), collapse = " + ")
-      fml <- as.formula(paste0("`", outcome, "` ~ ", rhs))
-      fit <- lm(fml, data = data)
-      s   <- summary(fit)$coefficients
-      rn  <- rownames(s)
-      target <- which(rn == sprintf("`%s`", m))
-      if (length(target) == 0) target <- 2L
-      tibble(med = m, beta = s[target,1], p = s[target,4])
-    }
-  }) |>
-    mutate(subgroup = group_label)
-}
+# make_label <- function(key) {
+#   sprintf("%d\n(AIBL=%d  NACC=%d  HABS=%d)",
+#           total_rc[[key]], aibl_rc[[key]], nacc_rc[[key]], habs_rc[[key]])
+# }
+###### interacton heatmap 
 
-
-# Build effects for an arbitrary list of subgroup rows
-# groups_df must have columns: label, filter_expr (string)
-build_effects <- function(data, meds, outcome,
-                          groups_df,
-                          covars = c("age"),
-                          min_n = 30) {
-  stopifnot(all(c("label","filter_expr") %in% names(groups_df)))
-  res <- purrr::map_dfr(seq_len(nrow(groups_df)), function(i) {
-    lab <- groups_df$label[i]
-    expr_str <- groups_df$filter_expr[i]
-    expr <- rlang::parse_expr(expr_str)
-    d_sub <- dplyr::filter(data, rlang::eval_tidy(expr, data = data))
-    if (nrow(d_sub) < min_n) return(NULL)
-    .effect_one_group(d_sub, meds, outcome, covars, group_label = lab)
-  })
-  res |>
-    mutate(star = .p_to_star(p))
-}
-
-# Plot heatmap
-add_pvalue_categories <- function(effects_tbl) {
-  effects_tbl |>
-    mutate(
-      p_category = case_when(
-        is.na(p) ~ "No data",
-        p < 0.001 ~ "p < 0.001",
-        p < 0.01 ~ "p < 0.01",
-        p < 0.05 ~ "p < 0.05",
-        p < 0.1 ~ "p < 0.1",
-        TRUE ~ "p ≥ 0.1"
-      ),
-      p_category = factor(p_category, levels = c("p < 0.001", "p < 0.01", "p < 0.05", "p < 0.1", "p ≥ 0.1", "No data"))
-    )
-}
-
-# NEW: P-value only heatmap function
-# plot_pvalue_continuous_heatmap <- function(effects_tbl, meds_order = NULL,
-#                                            title = "P-value Significance Heatmap",
-#                                            subtitle = "Cell color represents statistical significance (continuous)",
-#                                            row_order = NULL,
-#                                            p_limit = 0.1) {  # Cap p-values for better visualization
+# .effect_one_group <- function(data, meds, outcome = "dMMSE_per_year",
+#                               covars = c("age"), group_label = "All") {
+#   stopifnot(outcome %in% names(data))
+#   map_dfr(meds, function(m) {
+#     if (!m %in% names(data) || dplyr::n_distinct(data[[m]]) < 2) {
+#       tibble(med = m, beta = NA_real_, p = NA_real_)
+#     } else {
+#       rhs <- paste(c(sprintf("`%s`", m), covars), collapse = " + ")
+#       fml <- as.formula(paste0("`", outcome, "` ~ ", rhs))
+#       fit <- lm(fml, data = data)
+#       s   <- summary(fit)$coefficients
+#       rn  <- rownames(s)
+#       target <- which(rn == sprintf("`%s`", m))
+#       if (length(target) == 0) target <- 2L
+#       tibble(med = m, beta = s[target,1], p = s[target,4])
+#     }
+#   }) |>
+#     mutate(subgroup = group_label)
+# }
+# 
+# 
+# # Build effects for an arbitrary list of subgroup rows
+# # groups_df must have columns: label, filter_expr (string)
+# build_effects <- function(data, meds, outcome,
+#                           groups_df,
+#                           covars = c("age"),
+#                           min_n = 30) {
+#   stopifnot(all(c("label","filter_expr") %in% names(groups_df)))
+#   res <- purrr::map_dfr(seq_len(nrow(groups_df)), function(i) {
+#     lab <- groups_df$label[i]
+#     expr_str <- groups_df$filter_expr[i]
+#     expr <- rlang::parse_expr(expr_str)
+#     d_sub <- dplyr::filter(data, rlang::eval_tidy(expr, data = data))
+#     if (nrow(d_sub) < min_n) return(NULL)
+#     .effect_one_group(d_sub, meds, outcome, covars, group_label = lab)
+#   })
+#   res |>
+#     mutate(star = .p_to_star(p))
+# }
+# 
+# # Plot heatmap
+# add_pvalue_categories <- function(effects_tbl) {
+#   effects_tbl |>
+#     mutate(
+#       p_category = case_when(
+#         is.na(p) ~ "No data",
+#         p < 0.001 ~ "p < 0.001",
+#         p < 0.01 ~ "p < 0.01",
+#         p < 0.05 ~ "p < 0.05",
+#         p < 0.1 ~ "p < 0.1",
+#         TRUE ~ "p ≥ 0.1"
+#       ),
+#       p_category = factor(p_category, levels = c("p < 0.001", "p < 0.01", "p < 0.05", "p < 0.1", "p ≥ 0.1", "No data"))
+#     )
+# }
+# 
+# plot_pvalue_continuous_heatmap <- function(
+#     effects_tbl,
+#     meds_order   = NULL,
+#     title        = "P-value Significance Heatmap",
+#     subtitle     = "Cell color represents statistical significance (continuous)",
+#     row_order    = NULL,
+#     p_limit      = 0.1,                # cap p-values for better visualization
+#     dataset_col  = "dataset",          # column holding cohort labels
+#     dataset_order= c("NACC","AIBL","HABS-HD"),
+#     nrow_facets  = 1                   # 1 => side-by-side
+# ) {
 #   df <- effects_tbl
-# 
+#   
+#   # Require dataset column for faceting
+#   if (!dataset_col %in% names(df)) {
+#     stop(sprintf("Column '%s' not found in effects_tbl", dataset_col))
+#   }
+#   
+#   # medication order
 #   if (is.null(meds_order)) meds_order <- unique(df$med)
-# 
-#   # if row_order not given, fall back to median-based sort
+#   
+#   # row (subgroup) order: median beta descending if not provided
 #   if (is.null(row_order)) {
 #     row_order <- df |>
 #       dplyr::group_by(subgroup) |>
-#       dplyr::summarize(med_beta_median = median(beta, na.rm = TRUE)) |>
+#       dplyr::summarize(med_beta_median = median(beta, na.rm = TRUE), .groups = "drop") |>
 #       dplyr::arrange(dplyr::desc(med_beta_median)) |>
 #       dplyr::pull(subgroup)
 #   }
-# 
+#   
+#   # apply factor orders
 #   df$subgroup <- factor(df$subgroup, levels = row_order)
-#   df$med <- factor(df$med, levels = meds_order)
-# 
-#   # Cap p-values for better color scaling (optional)
+#   df$med      <- factor(df$med,      levels = meds_order)
+#   df[[dataset_col]] <- factor(df[[dataset_col]], levels = dataset_order)
+#   
+#   # cap p-values for color scaling
 #   df <- df |>
-#     mutate(p_capped = pmin(p, p_limit, na.rm = TRUE))
-# 
+#     dplyr::mutate(p_capped = pmin(p, p_limit, na.rm = TRUE))
+#   
+#   # build heatmap and facet by dataset (ordered NACC, AIBL, HABS)
 #   ggplot(df, aes(x = med, y = subgroup, fill = p_capped)) +
 #     geom_tile(color = "white") +
-#     # Continuous color scale - low p-values (significant) = dark colors
 #     scale_fill_gradient(
-#       low = "#E28187",
-#       high = "#ffffff",
+#       low    = "#E28187",
+#       high   = "#FFFFFF",
 #       limits = c(0, p_limit),
-#       name = "P-value",
+#       name   = "P-value",
 #       na.value = "grey90",
 #       breaks = c(0.00001, 0.01, 0.05, 0.1),
 #       labels = c("0.00001", "0.01", "0.05", "≥0.1")
 #     ) +
-#     labs(title = title, subtitle = subtitle, x = " ", y = NULL) +
+#     facet_wrap(stats::as.formula(paste("~", dataset_col)), nrow = nrow_facets) +
+#     labs(title = title, subtitle = subtitle, x = NULL, y = NULL) +
 #     theme_minimal(base_size = 12) +
 #     theme(
-#       panel.grid = element_blank(),
+#       panel.grid  = element_blank(),
 #       axis.text.x = element_text(angle = 45, hjust = 1),
-#       legend.title = element_text(size = 7),
+#       strip.text  = element_text(face = "bold"),
+#       legend.title= element_text(size = 7),
 #       legend.text = element_text(size = 5)
 #     )
 # }
 
-plot_pvalue_continuous_heatmap <- function(
-    effects_tbl,
-    meds_order   = NULL,
-    title        = "P-value Significance Heatmap",
-    subtitle     = "Cell color represents statistical significance (continuous)",
-    row_order    = NULL,
-    p_limit      = 0.1,                # cap p-values for better visualization
-    dataset_col  = "dataset",          # column holding cohort labels
-    dataset_order= c("NACC","AIBL","HABS-HD"),
-    nrow_facets  = 1                   # 1 => side-by-side
-) {
-  df <- effects_tbl
+
+# =============================================================================
+# 2. BINARY CLEANING FUNCTION
+# =============================================================================
+
+encode_binary <- function(x) {
   
-  # Require dataset column for faceting
-  if (!dataset_col %in% names(df)) {
-    stop(sprintf("Column '%s' not found in effects_tbl", dataset_col))
+  if (is.logical(x)) {
+    return(as.numeric(x))
   }
   
-  # medication order
-  if (is.null(meds_order)) meds_order <- unique(df$med)
-  
-  # row (subgroup) order: median beta descending if not provided
-  if (is.null(row_order)) {
-    row_order <- df |>
-      dplyr::group_by(subgroup) |>
-      dplyr::summarize(med_beta_median = median(beta, na.rm = TRUE), .groups = "drop") |>
-      dplyr::arrange(dplyr::desc(med_beta_median)) |>
-      dplyr::pull(subgroup)
+  if (is.numeric(x)) {
+    return(ifelse(x %in% c(0, 1), x, NA))
   }
   
-  # apply factor orders
-  df$subgroup <- factor(df$subgroup, levels = row_order)
-  df$med      <- factor(df$med,      levels = meds_order)
-  df[[dataset_col]] <- factor(df[[dataset_col]], levels = dataset_order)
+  x <- trimws(as.character(x))
   
-  # cap p-values for color scaling
-  df <- df |>
-    dplyr::mutate(p_capped = pmin(p, p_limit, na.rm = TRUE))
-  
-  # build heatmap and facet by dataset (ordered NACC, AIBL, HABS)
-  ggplot(df, aes(x = med, y = subgroup, fill = p_capped)) +
-    geom_tile(color = "white") +
-    scale_fill_gradient(
-      low    = "#E28187",
-      high   = "#FFFFFF",
-      limits = c(0, p_limit),
-      name   = "P-value",
-      na.value = "grey90",
-      breaks = c(0.00001, 0.01, 0.05, 0.1),
-      labels = c("0.00001", "0.01", "0.05", "≥0.1")
-    ) +
-    facet_wrap(stats::as.formula(paste("~", dataset_col)), nrow = nrow_facets) +
-    labs(title = title, subtitle = subtitle, x = NULL, y = NULL) +
-    theme_minimal(base_size = 12) +
-    theme(
-      panel.grid  = element_blank(),
-      axis.text.x = element_text(angle = 45, hjust = 1),
-      strip.text  = element_text(face = "bold"),
-      legend.title= element_text(size = 7),
-      legend.text = element_text(size = 5)
-    )
+  case_when(
+    x %in% c("1", "Yes", "YES", "yes", "True", "TRUE", "true", "Current", "Past History", "Female", "F") ~ 1,
+    x %in% c("0", "No", "NO", "no", "False", "FALSE", "false", "Male", "M", "NI") ~ 0,
+    TRUE ~ NA_real_
+  )
 }
 
+# =============================================================================
+# 3. CREATE PARTICIPANT-LEVEL LONGITUDINAL SUMMARY DATASET
+# =============================================================================
+
+create_cdr_change_dataset <- function(df,
+                                      outcome = "CDR",
+                                      id_col = "id",
+                                      time_col = "year_since_baseline") {
+  
+  df <- df %>%
+    mutate(
+      across(all_of(c(outcome, time_col)), as.numeric)
+    ) %>%
+    arrange(.data[[id_col]], .data[[time_col]])
+  
+  baseline_df <- df %>%
+    group_by(.data[[id_col]]) %>%
+    filter(!is.na(.data[[time_col]])) %>%
+    slice_min(order_by = .data[[time_col]], n = 1, with_ties = FALSE) %>%
+    ungroup() %>%
+    select(
+      all_of(id_col),
+      any_of(c("age", "edu", "sex", "APOE4")),
+      any_of(c("CVD", "Endocrine", "Psychiatric")),
+      any_of(med_cols_rename)
+    )
+  
+  progression_df <- df %>%
+    group_by(.data[[id_col]]) %>%
+    filter(!is.na(.data[[time_col]]), !is.na(.data[[outcome]])) %>%
+    arrange(.data[[time_col]], .by_group = TRUE) %>%
+    summarise(
+      n_visit = n(),
+      
+      baseline_CDR = first(.data[[outcome]]),
+      final_CDR    = last(.data[[outcome]]),
+      
+      baseline_year = first(.data[[time_col]]),
+      final_year    = last(.data[[time_col]]),
+      
+      followup_years = max(.data[[time_col]], na.rm = TRUE),
+      
+      CDR_change = final_CDR - baseline_CDR,
+      
+      CDR_change_per_year = ifelse(
+        followup_years > 0,
+        CDR_change / followup_years,
+        NA_real_
+      ),
+      
+      .groups = "drop"
+    )
+  
+  out <- baseline_df %>%
+    left_join(progression_df, by = id_col) %>%
+    mutate(
+      across(any_of(binary_features), encode_binary),
+      across(any_of(continuous_features), as.numeric)
+    )
+  
+  return(out)
+}
+
+# =============================================================================
+# ASSOCIATION FUNCTION FOR MIXED DATA TYPES
+# =============================================================================
+
+compute_mixed_assoc <- function(x, y, x_name, y_name) {
+  
+  ok <- complete.cases(x, y)
+  
+  x <- x[ok]
+  y <- y[ok]
+  
+  if (length(x) < 5) {
+    return(list(value = NA_real_, label = "NA", metric = "NA"))
+  }
+  
+  x_binary <- x_name %in% binary_features
+  y_binary <- y_name %in% binary_features
+  
+  x_cont <- x_name %in% continuous_features
+  y_cont <- y_name %in% continuous_features
+  
+  # continuous-continuous: Spearman rho
+  if (x_cont & y_cont) {
+    
+    r <- suppressWarnings(cor(x, y, method = "spearman"))
+    
+    return(list(
+      value = r,
+      label = sprintf("%.2f", r),
+      metric = "Spearman ρ"
+    ))
+  }
+  
+  # binary-binary: phi coefficient
+  if (x_binary & y_binary) {
+    
+    tb <- table(
+      factor(x, levels = c(0, 1)),
+      factor(y, levels = c(0, 1))
+    )
+    
+    if (any(rowSums(tb) == 0) | any(colSums(tb) == 0)) {
+      return(list(value = NA_real_, label = "NA", metric = "Phi"))
+    }
+    
+    phi <- (
+      tb[1, 1] * tb[2, 2] -
+        tb[1, 2] * tb[2, 1]
+    ) /
+      sqrt(prod(rowSums(tb)) * prod(colSums(tb)))
+    
+    return(list(
+      value = as.numeric(phi),
+      label = sprintf("%.2f", phi),
+      metric = "Phi ϕ"
+    ))
+  }
+  
+  # binary-continuous: Spearman rho after 0/1 coding
+  r <- suppressWarnings(
+    cor(as.numeric(x), as.numeric(y), method = "spearman")
+  )
+  
+  return(list(
+    value = r,
+    label = sprintf("%.2f", r),
+    metric = "Binary-continuous ρ"
+  ))
+}
+
+
+panel_mixed_cor <- function(data, mapping, ...) {
+  
+  x_name <- rlang::as_name(mapping$x)
+  y_name <- rlang::as_name(mapping$y)
+  
+  x <- GGally::eval_data_col(data, mapping$x)
+  y <- GGally::eval_data_col(data, mapping$y)
+  
+  assoc <- compute_mixed_assoc(x, y, x_name, y_name)
+  
+  fill_col <- scales::col_numeric(
+    palette = c("#2166ac", "white", "#b2182b"),
+    domain = c(-1, 1),
+    na.color = "grey85"
+  )(assoc$value)
+  
+  ggplot() +
+    geom_tile(
+      aes(x = 1, y = 1),
+      fill = fill_col,
+      color = "white",
+      linewidth = 0.5
+    ) +
+    geom_text(
+      aes(x = 1, y = 1),
+      label = assoc$label,
+      size = 6.5,
+      fontface = "bold",
+      color = ifelse(
+        is.na(assoc$value),
+        "grey30",
+        ifelse(abs(assoc$value) >= 0.45, "white", "black")
+      )
+    ) +
+    theme_void()
+}
+
+# =============================================================================
+# 6. DIAGONAL: DENSITY FOR CONTINUOUS, BAR FOR BINARY
+# =============================================================================
+
+panel_mixed_diag <- function(data, mapping, ...) {
+  
+  x_name <- rlang::as_name(mapping$x)
+  x <- GGally::eval_data_col(data, mapping$x)
+  
+  tmp <- tibble(x = x)
+  
+  if (x_name %in% continuous_features) {
+    
+    ggplot(tmp, aes(x = x)) +
+      geom_density(fill = "#92A5D1", alpha = 0.6, color = "grey30") +
+      theme_minimal(base_size = 9) +
+      theme(
+        axis.title = element_blank(),
+        panel.grid = element_blank()
+      )
+    
+  } else {
+    
+    ggplot(tmp, aes(x = factor(x, levels = c(0, 1)))) +
+      geom_bar(fill = "#C9DCC4", color = "grey30") +
+      scale_x_discrete(labels = c("0", "1")) +
+      theme_minimal(base_size = 9) +
+      theme(
+        axis.title = element_blank(),
+        panel.grid = element_blank()
+      )
+  }
+}
+panel_mixed_upper <- function(data, mapping, ...) {
+  
+  x_name <- rlang::as_name(mapping$x)
+  y_name <- rlang::as_name(mapping$y)
+  
+  x <- GGally::eval_data_col(data, mapping$x)
+  y <- GGally::eval_data_col(data, mapping$y)
+  
+  tmp <- tibble(x = x, y = y) %>% drop_na()
+  
+  x_binary <- x_name %in% binary_features
+  y_binary <- y_name %in% binary_features
+  x_cont   <- x_name %in% continuous_features
+  y_cont   <- y_name %in% continuous_features
+  
+  # ── continuous × continuous: scatter + smooth ─────────────────────────────
+  if (x_cont & y_cont) {
+    return(
+      ggplot(tmp, aes(x = x, y = y)) +
+        geom_point(alpha = 0.35, size = 0.7, color = "#555555") +
+        geom_smooth(method = "loess", se = FALSE,
+                    linewidth = 0.6, color = "#b2182b") +
+        theme_minimal(base_size = 9) +
+        theme(axis.title = element_blank(), panel.grid = element_blank())
+    )
+  }
+  
+  # ── binary × continuous: boxplot + jitter ────────────────────────────────
+  if ((x_binary & y_cont) | (x_cont & y_binary)) {
+    
+    if (x_binary & y_cont) {
+      p <- ggplot(tmp, aes(x = factor(x, levels = c(1, 0),
+                                      labels = c("Yes","No")), y = y))
+    } else {
+      p <- ggplot(tmp, aes(x = factor(y, levels = c(1, 0),
+                                      labels = c("Yes","No")), y = x))
+    }
+    
+    return(
+      p +
+        geom_boxplot(outlier.shape = NA,
+                     fill = "grey90", color = "grey30", linewidth = 0.4) +
+        geom_jitter(width = 0.15, alpha = 0.25, size = 0.6, color = "#555555") +
+        theme_minimal(base_size = 9) +
+        theme(axis.title = element_blank(), panel.grid = element_blank())
+    )
+  }
+  
+  # ── binary × binary: 2×2 heatmap tile — dark fill + white text ───────────
+  tile_colors <- c(
+    "low"  = "#d1d1d1",   # light grey  → small counts
+    "high" = "#2c2c2c"    # near-black  → large counts
+  )
+  
+  # ── binary × binary: 2×2 heatmap tile — dark fill + white text ───────────
+  tmp2 <- tmp %>%
+    mutate(
+      x = factor(x, levels = c(1, 0), labels = c("Yes", "No")),
+      y = factor(y, levels = c(1, 0), labels = c("Yes", "No"))
+    ) %>%
+    count(x, y) %>%
+    mutate(pct = n / sum(n))
+  
+  return(
+    ggplot(tmp2, aes(x = x, y = y, fill = pct)) +
+      geom_tile(color = "white", linewidth = 0.8) +
+      geom_text(aes(label = paste0(n, "\n(", scales::percent(pct, accuracy = 1), ")")),
+                size = 3.4, fontface = "bold", color = "white") +
+      scale_fill_gradient(low  = "#b0b0b0",   # medium grey → low %
+                          high = "#4a4a4a",   # near-black  → high %
+                          guide = "none") +
+      scale_x_discrete(drop = FALSE) +
+      scale_y_discrete(drop = FALSE) +
+      theme_minimal(base_size = 8) +
+      theme(
+        axis.title      = element_blank(),
+        axis.text       = element_text(size = 7, face = "bold", color = "grey30"),
+        panel.grid      = element_blank(),
+        legend.position = "none"
+      )
+  )
+}
+
+# =============================================================================
+# 8. MAIN PLOTTING FUNCTION
+# =============================================================================
+plot_mixed_pair_heatmap <- function(df,
+                                    title = "Mixed-Type Association Plot") {
+  
+  # ── 1. Prepare data ─────────────────────────────────────────────────────────
+  df_plot <- df %>%
+    select(any_of(plot_features)) %>%
+    mutate(
+      across(any_of(binary_features),     encode_binary),
+      across(any_of(continuous_features), as.numeric)
+    ) %>%
+    select(where(~ sum(!is.na(.x)) > 5))
+  
+  # ── 2. Rename to human-readable labels ──────────────────────────────────────
+  old_names <- intersect(names(feature_labels), names(df_plot))
+  new_names <- feature_labels[old_names]
+  df_plot   <- df_plot %>% rename(!!!setNames(old_names, new_names))
+  
+  # ── 3. Local feature type vectors (renamed) ──────────────────────────────────
+  local_binary <- ifelse(binary_features %in% old_names,
+                         feature_labels[binary_features],
+                         binary_features)
+  local_cont   <- ifelse(continuous_features %in% old_names,
+                         feature_labels[continuous_features],
+                         continuous_features)
+  
+  # ── 4. Lower triangle: association tile ──────────────────────────────────────
+  cor_fn <- function(data, mapping, ...) {
+    x_name <- rlang::as_name(mapping$x)
+    y_name <- rlang::as_name(mapping$y)
+    x      <- GGally::eval_data_col(data, mapping$x)
+    y      <- GGally::eval_data_col(data, mapping$y)
+    
+    assoc    <- compute_mixed_assoc(x, y, x_name, y_name,
+                                    bin_feats  = local_binary,
+                                    cont_feats = local_cont)
+    fill_col <- scales::col_numeric(
+      palette  = c("#2166ac", "white", "#b2182b"),
+      domain   = c(-1, 1),
+      na.color = "grey85"
+    )(assoc$value)
+    
+    ggplot() +
+      geom_tile(aes(x = 1, y = 1),
+                fill = fill_col, color = "white", linewidth = 0.5) +
+      geom_text(aes(x = 1, y = 1),
+                label    = assoc$label,
+                size     = 6.5,
+                fontface = "bold",
+                color    = ifelse(is.na(assoc$value), "grey30",
+                                  ifelse(abs(assoc$value) >= 0.45, "white", "black"))) +
+      theme_void()
+  }
+  
+  # ── 5. Diagonal: density (continuous) or bar (binary) ────────────────────────
+  diag_fn <- function(data, mapping, ...) {
+    x_name <- rlang::as_name(mapping$x)
+    x      <- GGally::eval_data_col(data, mapping$x)
+    tmp    <- tibble(x = x)
+    
+    if (x_name %in% local_cont) {
+      ggplot(tmp, aes(x = x)) +
+        geom_density(fill = "#92A5D1", alpha = 0.6, color = "grey30") +
+        theme_minimal(base_size = 9) +
+        theme(axis.title = element_blank(), panel.grid = element_blank())
+      
+    } else {
+      ggplot(tmp, aes(x = factor(x, levels = c(1, 0)))) +
+        geom_bar(aes(fill = factor(x, levels = c(1, 0))),
+                 color = "grey30", show.legend = FALSE) +
+        scale_x_discrete(labels = c("Yes", "No"), drop = FALSE) +
+        scale_fill_manual(values = c("1" = "#C9DCC4", "0" = "#DAA87C")) +
+        theme_minimal(base_size = 9) +
+        theme(axis.title = element_blank(), panel.grid = element_blank())
+    }
+  }
+  
+  # ── 6. Upper triangle: scatter / boxplot / contingency tile ──────────────────
+  upper_fn <- function(data, mapping, ...) {
+    x_name   <- rlang::as_name(mapping$x)
+    y_name   <- rlang::as_name(mapping$y)
+    x        <- GGally::eval_data_col(data, mapping$x)
+    y        <- GGally::eval_data_col(data, mapping$y)
+    tmp      <- tibble(x = x, y = y) %>% drop_na()
+    x_binary <- x_name %in% local_binary
+    y_binary <- y_name %in% local_binary
+    x_cont   <- x_name %in% local_cont
+    y_cont   <- y_name %in% local_cont
+    
+    # continuous × continuous
+    if (x_cont & y_cont) {
+      return(
+        ggplot(tmp, aes(x = x, y = y)) +
+          geom_point(alpha = 0.35, size = 0.7, color = "#555555") +
+          geom_smooth(method = "loess", se = FALSE,
+                      linewidth = 0.6, color = "#b2182b") +
+          theme_minimal(base_size = 9) +
+          theme(axis.title = element_blank(), panel.grid = element_blank())
+      )
+    }
+    
+    # binary × continuous
+    if ((x_binary & y_cont) | (x_cont & y_binary)) {
+      if (x_binary & y_cont) {
+        base <- ggplot(tmp, aes(x = factor(x, levels = c(1, 0),
+                                           labels = c("Yes", "No")), y = y))
+      } else {
+        base <- ggplot(tmp, aes(x = factor(y, levels = c(1, 0),
+                                           labels = c("Yes", "No")), y = x))
+      }
+      return(
+        base +
+          geom_boxplot(outlier.shape = NA, fill = "grey90",
+                       color = "grey30", linewidth = 0.4) +
+          geom_jitter(width = 0.15, alpha = 0.25,
+                      size = 0.6, color = "#555555") +
+          theme_minimal(base_size = 9) +
+          theme(axis.title = element_blank(), panel.grid = element_blank())
+      )
+    }
+    
+    # # binary × binary: 2×2 contingency tile
+    # tmp2 <- tmp %>%
+    #   mutate(
+    #     x = factor(x, levels = c(1, 0), labels = c("Yes", "No")),
+    #     y = factor(y, levels = c(1, 0), labels = c("Yes", "No"))
+    #   ) %>%
+    #   count(x, y) %>%
+    #   mutate(pct = n / sum(n))
+    # 
+    # return(
+    #   ggplot(tmp2, aes(x = x, y = y, fill = pct)) +
+    #     geom_tile(color = "white", linewidth = 0.8) +
+    #     geom_text(aes(label = paste0(n, "\n(",
+    #                                  scales::percent(pct, accuracy = 1), ")")),
+    #               size = 3.4, fontface = "bold", color = "white") +
+    #     scale_fill_gradient(low = "#b0b0b0", high = "#4a4a4a", guide = "none") +
+    #     scale_x_discrete(drop = FALSE) +
+    #     scale_y_discrete(drop = FALSE) +
+    #     theme_minimal(base_size = 8) +
+    #     theme(axis.title      = element_blank(),
+    #           axis.text       = element_text(size = 7, face = "bold",
+    #                                          color = "grey20"),
+    #           panel.grid      = element_blank(),
+    #           legend.position = "none")
+    # )
+    # binary × binary: 2×2 contingency tile
+    tmp2 <- tmp %>%
+      mutate(
+        x = factor(x, levels = c(1, 0), labels = c("Yes", "No")),
+        y = factor(y, levels = c(1, 0), labels = c("Yes", "No"))
+      ) %>%
+      count(x, y) %>%
+      mutate(
+        pct     = n / sum(n),
+        is_max  = n == max(n)   # flag the largest cell
+      )
+    
+    return(
+      ggplot(tmp2, aes(x = x, y = y)) +
+        geom_tile(aes(fill = is_max), color = "grey80", linewidth = 0.8) +
+        geom_text(aes(
+          label = paste0(n, "\n(", scales::percent(pct, accuracy = 1), ")"),
+          color = is_max,
+          fontface = "bold"
+        ), size = 3.4) +
+        scale_fill_manual(values = c("TRUE" = "#4a4a4a", "FALSE" = "white"),
+                          guide  = "none") +
+        scale_color_manual(values = c("TRUE" = "white", "FALSE" = "grey40"),
+                           guide  = "none") +
+        scale_x_discrete(drop = FALSE) +
+        scale_y_discrete(drop = FALSE) +
+        theme_minimal(base_size = 8) +
+        theme(axis.title      = element_blank(),
+              axis.text       = element_text(size = 7, face = "bold",
+                                             color = "grey20"),
+              panel.grid      = element_blank(),
+              legend.position = "none")
+    )
+  }
+  
+  # ── 7. Assemble ggpairs ───────────────────────────────────────────────────────
+  p <- ggpairs(
+    df_plot,
+    upper = list(continuous = upper_fn),
+    diag  = list(continuous = diag_fn),
+    lower = list(continuous = cor_fn),
+    title = title
+    # default: strips top (x) + right (y), ticks bottom (x) + left (y)
+  ) +
+    theme_bw(base_size = 9) +
+    theme(
+      plot.title       = element_text(face  = "bold", size = 15,
+                                      hjust = 0.5,
+                                      margin = margin(b = 15)),
+      strip.text.x     = element_text(angle  = 0, hjust = 0.5,
+                                      face   = "bold", size = 12,
+                                      margin = margin(t = 5, b = 5)),
+      strip.text.y     = element_text(angle  = -90, hjust = 0.5,
+                                      face   = "bold", size = 12,
+                                      margin = margin(l = 5, r = 5)),
+      strip.background = element_rect(fill      = "grey95",
+                                      color     = "grey70",
+                                      linewidth = 0.4),
+      strip.clip       = "off",
+      strip.placement  = "outside",
+      axis.text.x      = element_text(hjust = 0.5, size = 7),
+      axis.text.y      = element_text(size  = 7),
+      plot.margin      = margin(t = 20, r = 50, b = 20, l = 20)
+    )
+  
+  return(p)
+}
+
+
+# ── Update compute_mixed_assoc to accept explicit feature vectors ─────────────
+compute_mixed_assoc <- function(x, y, x_name, y_name,
+                                bin_feats  = binary_features,
+                                cont_feats = continuous_features) {
+  ok <- complete.cases(x, y)
+  x  <- x[ok]; y <- y[ok]
+  if (length(x) < 5) return(list(value = NA_real_, label = "NA", metric = "NA"))
+  
+  x_binary <- x_name %in% bin_feats
+  y_binary <- y_name %in% bin_feats
+  x_cont   <- x_name %in% cont_feats
+  y_cont   <- y_name %in% cont_feats
+  
+  if (x_cont & y_cont) {
+    r <- suppressWarnings(cor(x, y, method = "spearman"))
+    return(list(value = r, label = sprintf("%.2f", r), metric = "Spearman ρ"))
+  }
+  
+  if (x_binary & y_binary) {
+    tb <- table(factor(x, levels = c(0,1)), factor(y, levels = c(0,1)))
+    if (any(rowSums(tb) == 0) | any(colSums(tb) == 0))
+      return(list(value = NA_real_, label = "NA", metric = "Phi"))
+    phi <- (tb[1,1]*tb[2,2] - tb[1,2]*tb[2,1]) /
+      sqrt(prod(rowSums(tb)) * prod(colSums(tb)))
+    return(list(value = as.numeric(phi),
+                label  = sprintf("%.2f", phi),
+                metric = "Phi ϕ"))
+  }
+  
+  r <- suppressWarnings(cor(as.numeric(x), as.numeric(y), method = "spearman"))
+  return(list(value = r, label = sprintf("%.2f", r),
+              metric = "Binary-continuous ρ"))
+}
 ################################################
 
 make_participant_summary <- function(
@@ -2068,4 +2667,776 @@ plot_med_corr_by_cohort <- function(
     message("Saved to: ", out_pdf)
   }
   plt
+}
+
+# ── plot_forest_stratification_meta_expanded ──────────────────────────────────
+#' Stratification forest plot – stacked (up/down) paired rows per cohort
+#'
+#' Layout within each feature block
+#' ──────────────────────────────────
+#'  ┌──────────────────────────────────────────────────────────────────┐
+#'  │  ► Feature label                                                 │
+#'  │      NACC   [Stratum A]  ────●────   β [lo, hi]★  (colour A)   │
+#'  │             [Stratum B]  ────●────   β [lo, hi]★  (colour B)   │
+#'  │      AIBL   [Stratum A]  ────●────   …                          │
+#'  │             [Stratum B]  ────●────   …                          │
+#'  │      HABS   [Stratum A]  ────●────   …                          │
+#'  │             [Stratum B]  ────●────   …                          │
+#'  │    ◆ Meta   [Stratum A]  ◆◆◆◆◆◆◆   β [lo, hi]★  (bold)       │
+#'  │             [Stratum B]  ◆◆◆◆◆◆◆   …                          │
+#'  └──────────────────────────────────────────────────────────────────┘
+#'
+#' Three stratification columns are drawn side-by-side (Gender, APOE4, Age).
+#'
+#' @param dt            data.frame from [make_dt_from_fits()].
+#' @param terms         Character vector of term names to plot.
+#' @param term_labels   Named character vector term → display label.
+#' @param cohorts       Cohort names matching dt columns.
+#' @param strat_pairs   Named list of 3 two-element character vectors.
+#'   Each element is c(group_A_name, group_B_name) matching group names in dt.
+#' @param colors_A      Colour for stratum A in each column (length 1 or 3).
+#' @param colors_B      Colour for stratum B in each column (length 1 or 3).
+#' @param xlim          Shared x-axis limits; NULL = auto per column.
+#' @param xlim_cols     Per-column x-axis limit list (overrides xlim).
+#' @param digits        Decimal places for β text.
+#' @param meta_label    Label for the meta row.
+#' @param cex_base      Base character size multiplier.
+#' @param sub_row_h     Height of a single stratum sub-row in user coords.
+#' @param gap_feature   Vertical gap between feature blocks (in sub_row_h units).
+#' @param title         Plot title string.
+#' @param show_legend   Draw a colour legend at the bottom.
+#' @param show_vline    Draw a dashed vertical zero line in each forest panel.
+#' @param diamond_height Relative height of meta diamond.
+#' @param ci_lwd        Line width for CI segments.
+#' @param point_cex     Point size for cohort estimates.
+#' @param na_col        Colour for NA text.
+#' @param meta_bg       Background fill for meta rows.
+#' @param header_col    Colour for headers and bold labels.
+#' @param col_label_width Fraction of total plot width for the left label column.
+#' @param col_forest_frac Fraction of each strat column for the forest graphic.
+#' @param col_text_frac   Fraction of each strat column for β text.
+#' @param mar           Plotting margins passed to par().
+#' @return Invisibly NULL.
+#' @export
+plot_forest_stratification_meta_expanded <- function(
+    dt,
+    terms,
+    term_labels        = NULL,
+    cohorts            = c("NACC", "AIBL", "HABS"),
+    interaction_only   = FALSE,
+    terms_filter       = NULL,
+    strat_pairs        = list(
+      "Gender" = c("Female",          "Male"),
+      "APOE4"  = c("APOE4 carriers",  "APOE4 non-carriers"),
+      "Age"    = c("Age < 75",         "Age >= 75")
+    ),
+    colors_A           = c("#E64B35", "#238B45", "#D94F00"),
+    colors_B           = c("#3182BD", "#756BB1", "#6BAED6"),
+    xlim               = NULL,
+    xlim_cols          = NULL,
+    digits             = 3,
+    meta_label         = "Meta",
+    cex_base           = 0.85,
+    sub_row_h          = 0.55,
+    gap_pair           = 0.08,
+    gap_meta           = 0,
+    gap_feature        = 0.60,
+    title              = "",
+    show_legend        = TRUE,
+    show_vline         = TRUE,
+    diamond_height     = 0.38,
+    ci_lwd             = 2.4,
+    point_cex          = 1.1,
+    na_col             = "grey70",
+    meta_bg            = "grey94",
+    cohort_bg          = "grey98",     # Ultra-light background for cohort slots
+    header_col         = "grey15",
+    feat_bg            = "#E8E2EF",
+    col_label_width    = 0.07,
+    forest_col_frac    = 0.50,
+    col_gap_frac       = 0.01,
+    mar                = c(6.5, 0.2, 4.5, 0.5) 
+){
+  # ── helpers -----------------------------------------------------------------
+  .stars <- function(p){
+    s <- rep("", length(p))
+    s[is.finite(p) & p <  0.001]              <- "***"
+    s[is.finite(p) & p >= 0.001 & p < 0.01]  <- "**"
+    s[is.finite(p) & p >= 0.01  & p < 0.05]  <- "*"
+    s[is.finite(p) & p >= 0.05  & p <= 0.10] <- "^"
+    s
+  }
+  .x2n <- function(x, xlim, x0, w) x0 + (x - xlim[1]) / diff(xlim) * w
+  
+  # ── 1. term filtering + track original row indices -------------------------
+  term_row_idx <- seq_along(terms)
+  
+  if (isTRUE(interaction_only)){
+    keep         <- grepl(":", terms, fixed = TRUE)
+    terms        <- terms[keep]
+    term_row_idx <- term_row_idx[keep]
+    if (length(terms) == 0L) stop("interaction_only = TRUE but no ':' terms found.")
+  } else if (!is.null(terms_filter)){
+    keep <- vapply(terms, function(t)
+      any(vapply(terms_filter, function(p) grepl(p, t, fixed = TRUE), logical(1))),
+      logical(1))
+    terms        <- terms[keep]
+    term_row_idx <- term_row_idx[keep]
+    if (length(terms) == 0L) stop("terms_filter matched no terms.")
+  }
+  
+  # ── 2. prep ----------------------------------------------------------------
+  n_cols <- length(strat_pairs)
+  stopifnot(n_cols >= 1)
+  colors_A <- rep_len(colors_A, n_cols)
+  colors_B <- rep_len(colors_B, n_cols)
+  
+  if (is.null(term_labels)) term_labels <- stats::setNames(terms, terms)
+  row_labels <- vapply(terms, function(t)
+    if (t %in% names(term_labels)) term_labels[[t]] else t, character(1))
+  
+  row_slots <- c(cohorts, meta_label)
+  n_slots   <- length(row_slots)
+  n_terms   <- length(terms)
+  
+  # ── 3. data extraction -----------------------------------------------------
+  .pull <- function(grp, j, slot){
+    dt_row  <- term_row_idx[j]
+    is_meta <- (slot == meta_label)
+    if (is_meta){
+      e  <- dt[[paste0(grp, "_META_est")]][dt_row]
+      lo <- dt[[paste0(grp, "_META_low")]][dt_row]
+      hi <- dt[[paste0(grp, "_META_hi" )]][dt_row]
+      p  <- dt[[paste0(grp, "_META_p"  )]][dt_row]
+    } else {
+      e  <- dt[[paste0(grp, "_", slot, "_est")]][dt_row]
+      lo <- dt[[paste0(grp, "_", slot, "_low")]][dt_row]
+      hi <- dt[[paste0(grp, "_", slot, "_hi" )]][dt_row]
+      pc <- dt[[paste0(grp, "_", slot, "_p"  )]]
+      p  <- if (!is.null(pc)) pc[dt_row] else NA_real_
+    }
+    list(est = e, lo = lo, hi = hi, p = p, is_meta = is_meta)
+  }
+  
+  grp_data <- lapply(seq_len(n_cols), function(ci){
+    pair <- strat_pairs[[ci]]
+    list(
+      A = lapply(seq_along(terms), function(j)
+        stats::setNames(lapply(row_slots, function(s) .pull(pair[1], j, s)), row_slots)),
+      B = lapply(seq_along(terms), function(j)
+        stats::setNames(lapply(row_slots, function(s) .pull(pair[2], j, s)), row_slots))
+    )
+  })
+  
+  # ── 4. per-column x limits -------------------------------------------------
+  xlim_cols_pos <- vector("list", n_cols)
+  if (!is.null(xlim_cols)){
+    col_names <- names(strat_pairs)
+    for (ci in seq_len(n_cols)){
+      nm <- col_names[ci]
+      if (!is.null(names(xlim_cols)) && nm %in% names(xlim_cols)){
+        xlim_cols_pos[[ci]] <- xlim_cols[[nm]]
+      } else if (length(xlim_cols) >= ci){
+        xlim_cols_pos[[ci]] <- xlim_cols[[ci]]
+      }
+    }
+  }
+  
+  col_xlims <- lapply(seq_len(n_cols), function(ci){
+    if (!is.null(xlim_cols_pos[[ci]])) return(xlim_cols_pos[[ci]])
+    if (!is.null(xlim))               return(xlim)
+    vals <- c()
+    for (ab in c("A","B"))
+      for (j in seq_along(terms))
+        for (s in row_slots){
+          d <- grp_data[[ci]][[ab]][[j]][[s]]
+          vals <- c(vals, d$lo, d$hi)
+        }
+    vals <- vals[is.finite(vals)]
+    if (!length(vals)) return(c(-1, 1))
+    pad <- diff(range(vals)) * 0.13
+    range(vals) + c(-pad, pad)
+  })
+  
+  # ── 5. geometry & Canvas Layout Limits -------------------------------------
+  slot_h_val    <- 2 * sub_row_h + gap_pair
+  block_h       <- n_slots * slot_h_val + sub_row_h * 0.05
+  feat_header_h <- sub_row_h * 1.5
+  feat_total_h  <- feat_header_h + block_h
+  feat_gap_h    <- gap_feature * sub_row_h
+  
+  content_h <- n_terms * feat_total_h + (n_terms - 1) * feat_gap_h
+  top_pad   <- sub_row_h * 2.0   
+  bot_pad   <- sub_row_h * 2.5   
+  total_h   <- content_h + top_pad + bot_pad
+  
+  feat_top <- function(i) {
+    content_h + bot_pad - (i - 1) * (feat_total_h + feat_gap_h)
+  }
+  
+  vline_bot  <- bot_pad * 0.55 + 0.6
+  hdr_line_y <- total_h - top_pad + sub_row_h * 0.1
+  
+  # ── Dynamic Canvas Distribution --------------------------------------------
+  left_w        <- col_label_width  
+  total_group_w <- 1.0 - left_w     
+  
+  col_w     <- total_group_w / n_cols            
+  forest_w  <- col_w * forest_col_frac            
+  text_w    <- col_w * (1 - forest_col_frac)
+  
+  col_x0 <- left_w + (seq_len(n_cols) - 1) * col_w
+  
+  # ── 6. open device ---------------------------------------------------------
+  old_par <- graphics::par(mar = mar, no.readonly = TRUE)
+  on.exit(graphics::par(old_par), add = TRUE)
+  graphics::plot.new()
+  graphics::plot.window(xlim = c(0, 1), ylim = c(0, total_h), xaxs = "i", yaxs = "i")
+  
+  # ── 7. column headers ------------------------------------------------------
+  hdr_y <- total_h - sub_row_h * 1.1  
+  
+  for (ci in seq_len(n_cols)){
+    fx0 <- col_x0[ci]
+    fx1 <- fx0 + forest_w
+    graphics::rect(fx0, vline_bot, fx1, hdr_line_y,
+                   col = "grey99", border = NA)
+  }
+  
+  graphics::segments(0, hdr_line_y, 1.0, hdr_line_y, col = "white", lwd = 2.5)
+  
+  graphics::text(0.004, hdr_y, "Feature",
+                 font = 2, cex = cex_base * 1.35, col = header_col, adj = c(0, 0.5))
+  
+  for (ci in seq_len(n_cols)){
+    fx0     <- col_x0[ci]
+    fx1     <- fx0 + forest_w
+    xlc     <- col_xlims[[ci]]
+    
+    text_mid <- fx1 + (text_w / 2)
+    zero_nx  <- .x2n(0, xlc, fx0, forest_w)
+    
+    graphics::text(zero_nx, hdr_y, names(strat_pairs)[ci],
+                   font = 2, cex = cex_base * 1.25, col = header_col, adj = c(0.5, 0.5))
+    
+    graphics::text(text_mid, hdr_y, "ß [95% CI]",
+                   font = 2, cex = cex_base * 1.25, col = header_col, adj = c(0.5, 0.5))
+  }
+  
+  # ── 8. feature blocks ------------------------------------------------------
+  for (ti in seq_along(terms)){
+    ft <- feat_top(ti)
+    fb <- ft - feat_total_h
+    
+    graphics::rect(0, ft - feat_header_h, 1.0, ft,
+                   col = feat_bg, border = NA)
+    graphics::text(0.004, ft - feat_header_h * 0.50, row_labels[ti],
+                   font = 2, cex = cex_base * 1.05, col = header_col, adj = c(0, 0.5))
+    
+    y_cursor <- ft - feat_header_h
+    
+    for (si in seq_along(row_slots)){
+      slot_nm <- row_slots[si]
+      is_meta <- (slot_nm == meta_label)
+      
+      slot_b   <- y_cursor - slot_h_val
+      slot_mid <- y_cursor - slot_h_val / 2
+      
+      cy_A <- y_cursor - sub_row_h * 0.5
+      cy_B <- y_cursor - sub_row_h - gap_pair - sub_row_h * 0.5
+      
+      # Background tracking colors
+      if (is_meta) {
+        graphics::rect(0, slot_b, 1.0, y_cursor,
+                       col = meta_bg, border = NA)
+      } else {
+        # Shading cohorts with ultra-light background fill
+        graphics::rect(0, slot_b, 1.0, y_cursor,
+                       col = cohort_bg, border = NA)
+      }
+      
+      graphics::text(left_w * 0.18, slot_mid, slot_nm,
+                     font = if (is_meta) 2 else 1,
+                     cex  = cex_base * (if (is_meta) 0.95 else 0.88),
+                     col  = if (is_meta) header_col else "grey30",
+                     adj  = c(0, 0.5))
+      
+      for (ci in seq_len(n_cols)){
+        xlc  <- col_xlims[[ci]]
+        fx0  <- col_x0[ci]
+        fx1  <- fx0 + forest_w
+        ftx  <- fx1 + 0.008
+        
+        for (ab_idx in 1:2){
+          ab   <- c("A", "B")[ab_idx]
+          col_ <- if (ab == "A") colors_A[ci] else colors_B[ci]
+          cy   <- if (ab == "A") cy_A else cy_B
+          
+          d     <- grp_data[[ci]][[ab]][[ti]][[slot_nm]]
+          e     <- d$est; lo <- d$lo; hi <- d$hi; p <- d$p
+          stars <- .stars(p)
+          
+          nx_e  <- .x2n(e,  xlc, fx0, forest_w)
+          nx_lo <- .x2n(lo, xlc, fx0, forest_w)
+          nx_hi <- .x2n(hi, xlc, fx0, forest_w)
+          
+          oob_lo  <- is.finite(lo) && lo < xlc[1]
+          oob_hi  <- is.finite(hi) && hi > xlc[2]
+          
+          nx_lo_c <- max(nx_lo, fx0)
+          nx_hi_c <- min(nx_hi, fx1)
+          nx_e_c  <- max(fx0, min(nx_e, fx1))
+          
+          arr_w <- (total_h * 0.005) * cex_base
+          arr_d <- (forest_w * 0.025)
+          
+          if (is_meta){
+            if (is.finite(e)){
+              dh <- diamond_height * sub_row_h * 0.55
+              
+              # Condition: Clear diamond body color if p is not significant (p >= 0.05)
+              is_sig   <- !is.na(p) && p < 0.05
+              fill_col <- if (is_sig) scales::alpha(col_, 0.9) else "white"
+              
+              graphics::polygon(
+                c(nx_lo_c, nx_e_c, nx_hi_c, nx_e_c),
+                c(cy, cy + dh, cy, cy - dh),
+                col = fill_col, border = col_, lwd = 1.4
+              )
+            }
+          } else {
+            if (is.finite(nx_lo) && is.finite(nx_hi))
+              graphics::segments(nx_lo_c, cy, nx_hi_c, cy, col = col_, lwd = ci_lwd)
+            
+            if (oob_lo)
+              graphics::polygon(
+                c(fx0, fx0 + arr_d, fx0 + arr_d),
+                c(cy,  cy + arr_w,  cy - arr_w),
+                col = col_, border = col_, lwd = 0.5)
+            
+            if (oob_hi)
+              graphics::polygon(
+                c(fx1, fx1 - arr_d, fx1 - arr_d),
+                c(cy,  cy + arr_w,  cy - arr_w),
+                col = col_, border = col_, lwd = 0.5)
+            
+            if (is.finite(e))
+              graphics::points(nx_e_c, cy, pch = 18, cex = point_cex, col = col_)
+          }
+          
+          txt <- if (!is.na(e) && !is.na(lo) && !is.na(hi))
+            sprintf("%+.*f [%.*f, %.*f]%s", digits, e, digits, lo, digits, hi, stars)
+          else "\u2013"
+          
+          graphics::text(ftx, cy, txt,
+                         cex  = cex_base * 0.70,
+                         col  = if (is.finite(e)) col_ else na_col,
+                         adj  = c(0, 0.5),
+                         font = if (is_meta) 2 else 1)
+        }
+        
+        if (ti == n_terms && si == n_slots){
+          tick_line <- slot_b - sub_row_h * 0.05
+          tick_y    <- tick_line - sub_row_h * 0.20
+          tick_vals <- pretty(xlc, n = 3)
+          tick_vals <- tick_vals[tick_vals >= xlc[1] & tick_vals <= xlc[2]]
+          graphics::segments(fx0, tick_line, fx1, tick_line, col = "grey70", lwd = 0.6)
+          for (tv in tick_vals){
+            tnx <- .x2n(tv, xlc, fx0, forest_w)
+            graphics::text(tnx, tick_y,
+                           sprintf("%.2f", tv),
+                           cex = cex_base * 0.62, col = "grey45", adj = c(0.5, 1))
+          }
+        }
+      }
+      y_cursor <- slot_b
+    }
+    
+    if (ti < n_terms){
+      graphics::rect(0, fb - feat_gap_h, 1.0, fb,
+                     col = "#E8E2EF",   
+                     border = NA)
+    }
+  }
+  
+  # ── 9. null lines drawn last -----------------------------------------------
+  if (show_vline){
+    for (ci in seq_len(n_cols)){
+      fx0 <- col_x0[ci]
+      fx1 <- fx0 + forest_w
+      xlc <- col_xlims[[ci]]
+      zero_nx <- .x2n(0, xlc, fx0, forest_w)
+      if (zero_nx >= fx0 && zero_nx <= fx1)
+        graphics::segments(zero_nx, vline_bot, zero_nx, hdr_line_y,
+                           col = "grey55", lwd = 1.1, lty = 2)
+    }
+  }
+  
+  # ── 10. title --------------------------------------------------------------
+  if (nchar(trimws(title)) > 0)
+    graphics::mtext(title, side = 3, line = 2.8, cex = cex_base * 1.05,
+                    font = 2, col = header_col)
+  
+  # ── 11. Bottom Legend Matrix ───────────────────────────────────────────────
+  if (show_legend){
+    old_xpd <- graphics::par(xpd = TRUE)
+    on.exit(graphics::par(old_xpd), add = TRUE)
+    
+    leg_top_y  <- -sub_row_h * 1.2
+    line_space <- sub_row_h * 0.8  
+    
+    for (ci in seq_len(n_cols)){
+      leg_x0 <- col_x0[ci]
+      
+      # Sub-header category names matching current setup
+      graphics::text(leg_x0, leg_top_y, names(strat_pairs)[ci],
+                     font = 2, cex = cex_base * 0.90, col = header_col, adj = c(0, 0.5))
+      
+      # Group Line A
+      y1 <- leg_top_y - line_space
+      graphics::segments(leg_x0, y1, leg_x0 + 0.015, y1, col = colors_A[ci], lwd = 3)
+      graphics::text(leg_x0 + 0.020, y1, strat_pairs[[ci]][1],
+                     cex = cex_base * 0.80, col = "grey25", adj = c(0, 0.5))
+      
+      # Group Line B
+      y2 <- leg_top_y - 2 * line_space
+      graphics::segments(leg_x0, y2, leg_x0 + 0.015, y2, col = colors_B[ci], lwd = 3)
+      graphics::text(leg_x0 + 0.020, y2, strat_pairs[[ci]][2],
+                     cex = cex_base * 0.80, col = "grey25", adj = c(0, 0.5))
+    }
+  }
+  
+  invisible(NULL)
+}
+
+
+
+
+
+
+
+
+
+plot_forest_stratification_meta_expanded2 <- function(
+    dt,
+    terms,
+    term_labels        = NULL,
+    cohorts            = c("NACC", "AIBL", "HABS"),
+    interaction_only   = FALSE,
+    terms_filter       = NULL,
+    prog_groups        = c("Overall", "Non-progression", "CU-MCI progression", "CU/MCI-AD progression", "AD"),
+    group_colors       = c("#2F4F4F", "#3182BD", "#E64B35", "#D94F00", "#756BB1"), # Customized colors for each of the 5 columns
+    xlim               = NULL,
+    xlim_cols          = NULL,
+    digits             = 3,
+    meta_label         = "Meta",
+    cex_base           = 0.85,
+    sub_row_h          = 0.55,
+    gap_meta           = 0,
+    gap_feature        = 0.60,
+    title              = "",
+    show_legend        = TRUE,
+    show_vline         = TRUE,
+    diamond_height     = 0.38,
+    ci_lwd             = 2.4,
+    point_cex          = 1.1,
+    na_col             = "grey70",
+    meta_bg            = "grey94",
+    cohort_bg          = "grey98",     # Light background fill for cohorts
+    header_col         = "grey15",
+    feat_bg            = "#E8E2EF",
+    col_label_width    = 0.07,
+    forest_col_frac    = 0.50,         # Space shared inside a column block between plot and text values
+    mar                = c(6.5, 0.2, 4.5, 0.5) 
+){
+  # ── helpers -----------------------------------------------------------------
+  .stars <- function(p){
+    s <- rep("", length(p))
+    s[is.finite(p) & p <  0.001]              <- "***"
+    s[is.finite(p) & p >= 0.001 & p < 0.01]  <- "**"
+    s[is.finite(p) & p >= 0.01  & p < 0.05]  <- "*"
+    s[is.finite(p) & p >= 0.05  & p <= 0.10] <- "^"
+    s
+  }
+  .x2n <- function(x, xlim, x0, w) x0 + (x - xlim[1]) / diff(xlim) * w
+  
+  # ── 1. term filtering + track original row indices -------------------------
+  term_row_idx <- seq_along(terms)
+  
+  if (isTRUE(interaction_only)){
+    keep         <- grepl(":", terms, fixed = TRUE)
+    terms        <- terms[keep]
+    term_row_idx <- term_row_idx[keep]
+  } else if (!is.null(terms_filter)){
+    keep <- vapply(terms, function(t)
+      any(vapply(terms_filter, function(p) grepl(p, t, fixed = TRUE), logical(1))),
+      logical(1))
+    terms        <- terms[keep]
+    term_row_idx <- term_row_idx[keep]
+  }
+  
+  # ── 2. prep ----------------------------------------------------------------
+  n_cols <- length(prog_groups)
+  stopifnot(n_cols >= 1)
+  group_colors <- rep_len(group_colors, n_cols)
+  
+  if (is.null(term_labels)) term_labels <- stats::setNames(terms, terms)
+  row_labels <- vapply(terms, function(t)
+    if (t %in% names(term_labels)) term_labels[[t]] else t, character(1))
+  
+  row_slots <- c(cohorts, meta_label)
+  n_slots   <- length(row_slots)
+  n_terms   <- length(terms)
+  
+  # ── 3. data extraction -----------------------------------------------------
+  .pull <- function(grp, j, slot){
+    dt_row  <- term_row_idx[j]
+    is_meta <- (slot == meta_label)
+    if (is_meta){
+      e  <- dt[[paste0(grp, "_META_est")]][dt_row]
+      lo <- dt[[paste0(grp, "_META_low")]][dt_row]
+      hi <- dt[[paste0(grp, "_META_hi" )]][dt_row]
+      p  <- dt[[paste0(grp, "_META_p"  )]][dt_row]
+    } else {
+      e  <- dt[[paste0(grp, "_", slot, "_est")]][dt_row]
+      lo <- dt[[paste0(grp, "_", slot, "_low")]][dt_row]
+      hi <- dt[[paste0(grp, "_", slot, "_hi" )]][dt_row]
+      pc <- dt[[paste0(grp, "_", slot, "_p"  )]]
+      p  <- if (!is.null(pc)) pc[dt_row] else NA_real_
+    }
+    list(est = e, lo = lo, hi = hi, p = p, is_meta = is_meta)
+  }
+  
+  # Group structured dynamically based on individual clinical groups
+  grp_data <- lapply(seq_len(n_cols), function(ci){
+    grp_nm <- prog_groups[ci]
+    lapply(seq_along(terms), function(j)
+      stats::setNames(lapply(row_slots, function(s) .pull(grp_nm, j, s)), row_slots))
+  })
+  
+  # ── 4. per-column x limits -------------------------------------------------
+  xlim_cols_pos <- vector("list", n_cols)
+  if (!is.null(xlim_cols)){
+    for (ci in seq_len(n_cols)){
+      nm <- prog_groups[ci]
+      if (!is.null(names(xlim_cols)) && nm %in% names(xlim_cols)){
+        xlim_cols_pos[[ci]] <- xlim_cols[[nm]]
+      } else if (length(xlim_cols) >= ci){
+        xlim_cols_pos[[ci]] <- xlim_cols[[ci]]
+      }
+    }
+  }
+  
+  col_xlims <- lapply(seq_len(n_cols), function(ci){
+    if (!is.null(xlim_cols_pos[[ci]])) return(xlim_cols_pos[[ci]])
+    if (!is.null(xlim))               return(xlim)
+    vals <- c()
+    for (j in seq_along(terms))
+      for (s in row_slots){
+        d <- grp_data[[ci]][[j]][[s]]
+        vals <- c(vals, d$lo, d$hi)
+      }
+    vals <- vals[is.finite(vals)]
+    if (!length(vals)) return(c(-1, 1))
+    pad <- diff(range(vals)) * 0.13
+    range(vals) + c(-pad, pad)
+  })
+  
+  # ── 5. geometry & Canvas Layout Limits -------------------------------------
+  slot_h_val    <- sub_row_h + 0.05    # Single plot row per cohort item now
+  block_h       <- n_slots * slot_h_val + sub_row_h * 0.05
+  feat_header_h <- sub_row_h * 1.5
+  feat_total_h  <- feat_header_h + block_h
+  feat_gap_h    <- gap_feature * sub_row_h
+  
+  content_h <- n_terms * feat_total_h + (n_terms - 1) * feat_gap_h
+  top_pad   <- sub_row_h * 2.0   
+  bot_pad   <- sub_row_h * 2.5   
+  total_h   <- content_h + top_pad + bot_pad
+  
+  feat_top <- function(i) {
+    content_h + bot_pad - (i - 1) * (feat_total_h + feat_gap_h)
+  }
+  
+  vline_bot  <- bot_pad * 0.55 + 0.6
+  hdr_line_y <- total_h - top_pad + sub_row_h * 0.1
+  
+  # ── Dynamic Canvas Distribution --------------------------------------------
+  left_w        <- col_label_width  
+  total_group_w <- 1.0 - left_w     
+  
+  col_w     <- total_group_w / n_cols            
+  forest_w  <- col_w * forest_col_frac            
+  text_w    <- col_w * (1 - forest_col_frac)
+  
+  col_x0 <- left_w + (seq_len(n_cols) - 1) * col_w
+  
+  # ── 6. open device ---------------------------------------------------------
+  old_par <- graphics::par(mar = mar, no.readonly = TRUE)
+  on.exit(graphics::par(old_par), add = TRUE)
+  graphics::plot.new()
+  graphics::plot.window(xlim = c(0, 1), ylim = c(0, total_h), xaxs = "i", yaxs = "i")
+  
+  # ── 7. column headers ------------------------------------------------------
+  hdr_y <- total_h - sub_row_h * 1.1  
+  
+  for (ci in seq_len(n_cols)){
+    fx0 <- col_x0[ci]
+    fx1 <- fx0 + forest_w
+    graphics::rect(fx0, vline_bot, fx1, hdr_line_y, col = "grey99", border = NA)
+  }
+  
+  graphics::segments(0, hdr_line_y, 1.0, hdr_line_y, col = "white", lwd = 2.5)
+  graphics::text(0.004, hdr_y, "Feature", font = 2, cex = cex_base * 1.15, col = header_col, adj = c(0, 0.5))
+  
+  for (ci in seq_len(n_cols)){
+    fx0      <- col_x0[ci]
+    fx1      <- fx0 + forest_w
+    xlc      <- col_xlims[[ci]]
+    text_mid <- fx1 + (text_w / 2)
+    zero_nx  <- .x2n(0, xlc, fx0, forest_w)
+    
+    graphics::text(zero_nx, hdr_y, prog_groups[ci], font = 2, cex = cex_base * 0.95, col = header_col, adj = c(0.5, 0.5))
+    graphics::text(text_mid, hdr_y, "ß [95% CI]", font = 2, cex = cex_base * 0.90, col = header_col, adj = c(0.5, 0.5))
+  }
+  
+  # ── 8. feature blocks ------------------------------------------------------
+  for (ti in seq_along(terms)){
+    ft <- feat_top(ti)
+    fb <- ft - feat_total_h
+    
+    graphics::rect(0, ft - feat_header_h, 1.0, ft, col = feat_bg, border = NA)
+    graphics::text(0.004, ft - feat_header_h * 0.50, row_labels[ti], font = 2, cex = cex_base * 1.05, col = header_col, adj = c(0, 0.5))
+    
+    y_cursor <- ft - feat_header_h
+    
+    for (si in seq_along(row_slots)){
+      slot_nm <- row_slots[si]
+      is_meta <- (slot_nm == meta_label)
+      
+      slot_b   <- y_cursor - slot_h_val
+      slot_mid <- y_cursor - slot_h_val / 2
+      
+      # Assign clean background shading layers
+      graphics::rect(0, slot_b, 1.0, y_cursor, col = if (is_meta) meta_bg else cohort_bg, border = NA)
+      
+      graphics::text(left_w * 0.18, slot_mid, slot_nm,
+                     font = if (is_meta) 2 else 1,
+                     cex  = cex_base * (if (is_meta) 0.95 else 0.88),
+                     col  = if (is_meta) header_col else "grey30",
+                     adj  = c(0, 0.5))
+      
+      for (ci in seq_len(n_cols)){
+        xlc  <- col_xlims[[ci]]
+        fx0  <- col_x0[ci]
+        fx1  <- fx0 + forest_w
+        ftx  <- fx1 + 0.004
+        col_ <- group_colors[ci]
+        
+        d     <- grp_data[[ci]][[ti]][[slot_nm]]
+        e     <- d$est; lo <- d$lo; hi <- d$hi; p <- d$p
+        stars <- .stars(p)
+        
+        nx_e  <- .x2n(e,  xlc, fx0, forest_w)
+        nx_lo <- .x2n(lo, xlc, fx0, forest_w)
+        nx_hi <- .x2n(hi, xlc, fx0, forest_w)
+        
+        oob_lo  <- is.finite(lo) && lo < xlc[1]
+        oob_hi  <- is.finite(hi) && hi > xlc[2]
+        
+        nx_lo_c <- max(nx_lo, fx0)
+        nx_hi_c <- min(nx_hi, fx1)
+        nx_e_c  <- max(fx0, min(nx_e, fx1))
+        
+        arr_w <- (total_h * 0.005) * cex_base
+        arr_d <- (forest_w * 0.025)
+        
+        if (is_meta){
+          if (is.finite(e)){
+            dh       <- diamond_height * slot_h_val * 0.50
+            is_sig   <- !is.na(p) && p < 0.05
+            fill_col <- if (is_sig) scales::alpha(col_, 0.9) else "white" # Significant vs. Non-significant Hollow Diamond
+            
+            graphics::polygon(
+              c(nx_lo_c, nx_e_c, nx_hi_c, nx_e_c),
+              c(slot_mid, slot_mid + dh, slot_mid, slot_mid - dh),
+              col = fill_col, border = col_, lwd = 1.4
+            )
+          }
+        } else {
+          if (is.finite(nx_lo) && is.finite(nx_hi))
+            graphics::segments(nx_lo_c, slot_mid, nx_hi_c, slot_mid, col = col_, lwd = ci_lwd)
+          
+          if (oob_lo)
+            graphics::polygon(c(fx0, fx0 + arr_d, fx0 + arr_d), c(slot_mid, slot_mid + arr_w, slot_mid - arr_w), col = col_, border = col_, lwd = 0.5)
+          if (oob_hi)
+            graphics::polygon(c(fx1, fx1 - arr_d, fx1 - arr_d), c(slot_mid, slot_mid + arr_w, slot_mid - arr_w), col = col_, border = col_, lwd = 0.5)
+          
+          if (is.finite(e))
+            graphics::points(nx_e_c, slot_mid, pch = 18, cex = point_cex, col = col_)
+        }
+        
+        txt <- if (!is.na(e) && !is.na(lo) && !is.na(hi))
+          sprintf("%+.*f [%.*f, %.*f]%s", digits, e, digits, lo, digits, hi, stars)
+        else "\u2013"
+        
+        graphics::text(ftx, slot_mid, txt,
+                       cex  = cex_base * 0.68,
+                       col  = if (is.finite(e)) col_ else na_col,
+                       adj  = c(0, 0.5),
+                       font = if (is_meta) 2 else 1)
+        
+        # Draw scale baseline axes
+        if (ti == n_terms && si == n_slots){
+          tick_line <- slot_b - sub_row_h * 0.05
+          tick_y    <- tick_line - sub_row_h * 0.20
+          tick_vals <- pretty(xlc, n = 3)
+          tick_vals <- tick_vals[tick_vals >= xlc[1] & tick_vals <= xlc[2]]
+          graphics::segments(fx0, tick_line, fx1, tick_line, col = "grey70", lwd = 0.6)
+          for (tv in tick_vals){
+            tnx <- .x2n(tv, xlc, fx0, forest_w)
+            graphics::text(tnx, tick_y, sprintf("%.2f", tv), cex = cex_base * 0.60, col = "grey45", adj = c(0.5, 1))
+          }
+        }
+      }
+      y_cursor <- slot_b
+    }
+    
+    if (ti < n_terms){
+      graphics::rect(0, fb - feat_gap_h, 1.0, fb, col = "#E8E2EF", border = NA)
+    }
+  }
+  
+  # ── 9. null lines drawn last -----------------------------------------------
+  if (show_vline){
+    for (ci in seq_len(n_cols)){
+      fx0 <- col_x0[ci]
+      fx1 <- fx0 + forest_w
+      xlc <- col_xlims[[ci]]
+      zero_nx <- .x2n(0, xlc, fx0, forest_w)
+      if (zero_nx >= fx0 && zero_nx <= fx1)
+        graphics::segments(zero_nx, vline_bot, zero_nx, hdr_line_y, col = "grey55", lwd = 1.1, lty = 2)
+    }
+  }
+  
+  # ── 10. title --------------------------------------------------------------
+  if (nchar(trimws(title)) > 0)
+    graphics::mtext(title, side = 3, line = 2.8, cex = cex_base * 1.05, font = 2, col = header_col)
+  
+  # ── 11. Bottom Legend Matrix -----------------------------------------------
+  if (show_legend){
+    old_xpd <- graphics::par(xpd = TRUE)
+    on.exit(graphics::par(old_xpd), add = TRUE)
+    
+    leg_top_y  <- -sub_row_h * 1.5
+    
+    # 5 side-by-side cleanly spaced legend columns matching the matrix row flow
+    for (ci in seq_len(n_cols)){
+      leg_x0 <- col_x0[ci]
+      graphics::rect(leg_x0, leg_top_y - 0.1, leg_x0 + 0.015, leg_top_y + 0.1, col = group_colors[ci], border = NA)
+      graphics::text(leg_x0 + 0.022, leg_top_y, prog_groups[ci], cex = cex_base * 0.85, col = "grey20", adj = c(0, 0.5), font = 2)
+    }
+  }
+  
+  invisible(NULL)
 }
