@@ -1,0 +1,75 @@
+---
+title: "meta_plots"
+author: "Yihan Wang"
+date: "2025-09-16"
+output: word_document
+---
+
+```{r}
+rm(list=ls())
+set.seed(42)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(forcats)
+library(stringr)
+library(scales)
+```
+
+```{r}
+source("medication-lmer-utility.R")
+source("plots.R")
+```
+
+```{r}
+med_cols<-c("ACEi","ARB","BetaBlk","CCB","Diuretic","Statin","Metformin")
+# med_cols_rename <-c("ACEi","ARBs","β-Blocker","CCBs","Diuretics","Statins","Metformin")
+```
+
+```{r}
+NACC_full_df_cdr_imputed<-read.csv("../preprocessed_data/NACC/NACC_cdr_imputed_binary.csv")
+AIBL_full_df_cdr_imputed<-read.csv("../preprocessed_data/AIBL/AIBL_cdr_imputed_binary.csv")
+HABS_full_df_cdr_imputed<-read.csv("../preprocessed_data/HABSHD/HABSHD_cdr_imputed_binary.csv")
+```
+
+```{r}
+# colnames(NACC_full_df_cdr_imputed)[colnames(NACC_full_df_cdr_imputed) %in% med_cols] <- med_cols_rename
+# colnames(AIBL_full_df_cdr_imputed)[colnames(AIBL_full_df_cdr_imputed) %in% med_cols] <- med_cols_rename
+# colnames(HABS_full_df_cdr_imputed)[colnames(HABS_full_df_cdr_imputed) %in% med_cols] <- med_cols_rename
+```
+
+```{r}
+AIBL_prog <- split_by_progression(AIBL_full_df_cdr_imputed)
+NACC_prog <- split_by_progression(NACC_full_df_cdr_imputed)
+HABSHD_prog <- split_by_progression(HABS_full_df_cdr_imputed)
+```
+```{r}
+print(length(unique(NACC_full_df_cdr_imputed$id)))
+print(length(unique(AIBL_full_df_cdr_imputed$id)))
+print(length(unique(HABS_full_df_cdr_imputed$id)))
+```
+
+
+```{r}
+# ---- 1) Combine three baseline summary tables ----
+AIBL_summary  <- baseline_summary(AIBL_prog$labelled_df)
+NACC_summary  <- baseline_summary(NACC_prog$labelled_df)
+HABS_summary  <- baseline_summary(HABSHD_prog$labelled_df)
+
+summary_3cohort <- AIBL_summary %>%
+    rename(AIBL = Value) %>%
+    left_join(NACC_summary %>% rename(NACC = Value), by = "Measure") %>%
+    left_join(HABS_summary %>% rename(`HABS-HD` = Value), by = "Measure")
+summary_3cohort
+```
+
+
+```{r}
+age_med_3cohort <- bind_rows(
+  first_age_by_med_table(AIBL_full_df_cdr_imputed, med_cols, "AIBL"),
+  first_age_by_med_table(NACC_full_df_cdr_imputed, med_cols, "NACC"),
+  first_age_by_med_table(HABS_full_df_cdr_imputed, med_cols, "HABS-HD")
+)
+age_med_3cohort
+```
+
