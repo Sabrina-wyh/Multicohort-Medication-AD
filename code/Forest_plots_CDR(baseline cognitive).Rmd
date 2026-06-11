@@ -301,7 +301,7 @@ dt_baseline_cog = make_dt_from_fits(
     `Overall` = list(fit_full_NACC, fit_full_AIBL, fit_full_HABS),
     `CU`     = list(fit_NACC_CU,   fit_AIBL_CU,   fit_HABS_CU),
     `MCI`   = list(fit_NACC_MCI,   fit_AIBL_MCI,   fit_HABS_MCI),
-    `AD`     = list(fit_NACC_AD,   fit_AIBL_AD,   fit_HABS_AD)
+    `ADem`     = list(fit_NACC_AD,   fit_AIBL_AD,   fit_HABS_AD)
   ),
   term= terms_all,
   cohorts = c("NACC","AIBL","HABS"),
@@ -337,7 +337,7 @@ plot_forest_stratification_meta_expanded2(
   interaction_only = TRUE,  # Set to TRUE if you only want to plot the drug * time rows
   
   # Group tracking parameters for the 5 parallel blocks
-  prog_groups      = c("Overall", "CU", "MCI", "AD"),
+  prog_groups      = c("Overall", "CU", "MCI", "ADem"),
   group_colors     = c("#2F4F4F", "#8EBCBB", "#E8C38C", "#E64B35"),
   
   # Custom x-axis window boundaries for each of your 5 clinical group columns
