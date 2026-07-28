@@ -500,7 +500,7 @@ png_path <- "../plots/forestplot/Figure 2.png"
 dir.create(dirname(png_path), recursive = TRUE, showWarnings = FALSE)
 
 # Expanded width to 15 in for a wider landscape layout (5 parallel group tracks)
-img_w <- 15; img_h <- 10; img_dpi <- 900
+img_w <- 15; img_h <- 10; img_dpi <- 500
 
 if (requireNamespace("ragg", quietly = TRUE)){
   ragg::agg_png(png_path, width = img_w, height = img_h,

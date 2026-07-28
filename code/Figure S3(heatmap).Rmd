@@ -1,0 +1,154 @@
+---
+title: "meta_plots"
+author: "Yihan Wang"
+date: "2025-09-16"
+output: word_document
+---
+
+```{r}
+rm(list=ls())
+set.seed(42)
+library(tidyverse)
+library(ggplot2)
+```
+
+```{r}
+source("medication-lmer-utility.R")
+source("plots.R")
+```
+
+```{r}
+med_cols <- c("ACEi","ARB","BetaBlk","CCB","Diuretic","Metformin","Statin")
+med_cols_rename <-c("ACEi","ARBs","β-Blocker","CCBs","Diuretics","Statins","Metformin")
+disease_cols <- c('CVD', 'Endocrine', 'Psychiatric')
+```
+
+```{r}
+AIBL_full_df_consist <- read.csv("../preprocessed_data/AIBL/AIBL_cdr_imputed_binary_consist.csv")
+colnames(AIBL_full_df_consist)[colnames(AIBL_full_df_consist) %in% med_cols] <- med_cols_rename
+NACC_full_df_consist <- read.csv("../preprocessed_data/NACC/NACC_cdr_imputed_binary_consist.csv")
+colnames(NACC_full_df_consist)[colnames(NACC_full_df_consist) %in% med_cols] <- med_cols_rename
+HABS_full_df_consist <- read.csv("../preprocessed_data/HABSHD/HABSHD_cdr_imputed_consist.csv")
+colnames(HABS_full_df_consist)[colnames(HABS_full_df_consist) %in% med_cols] <- med_cols_rename
+meta_full_df_consist <- read.csv("../preprocessed_data/meta/meta_analysis_cdr_imputed_binary_consist.csv")
+colnames(meta_full_df_consist)[colnames(meta_full_df_consist) %in% med_cols] <- med_cols_rename
+```
+
+
+# correlation
+```{r}
+library(tidyverse)
+library(GGally)
+library(ggplot2)
+
+# =============================================================================
+# 1. FEATURE DEFINITIONS
+# =============================================================================
+
+binary_features <- c(
+  "sex", "APOE4",
+  "CVD", "Endocrine", "Psychiatric",
+  med_cols_rename
+)
+
+continuous_features <- c(
+  "CDR_change_per_year",
+  "age",
+  "edu"
+)
+
+plot_features <- c(
+  continuous_features,
+  binary_features
+)
+
+feature_labels <- c(
+  "CDR_change_per_year" = "ΔCDR/year",
+  "age"                 = "Age",
+  "edu"                 = "Education",
+  "sex"                 = "Sex",
+  "APOE4"               = "APOE ε4",
+  "CVD"                 = "CVD",
+  "Endocrine"           = "Endocrine",
+  "Psychiatric"         = "Psychiatric",
+  "ACEi"                = "ACEi",
+  "ARBs"                = "ARBs",
+  "β-Blocker"           = "β-Blocker",
+  "CCBs"                = "CCBs",
+  "Diuretics"           = "Diuretics",
+  "Statins"             = "Statins",
+  "Metformin"           = "Metformin"
+)
+# CREATE PARTICIPANT-LEVEL DATASETS FOR EACH COHORT
+
+AIBL_corr_df <- create_cdr_change_dataset(
+  AIBL_full_df_consist,
+  outcome = "CDR",
+  id_col = "id"
+)
+
+NACC_corr_df <- create_cdr_change_dataset(
+  NACC_full_df_consist,
+  outcome = "CDR",
+  id_col = "id"
+)
+
+HABS_corr_df <- create_cdr_change_dataset(
+  HABS_full_df_consist,
+  outcome = "CDR",
+  id_col = "id"
+)
+
+# =============================================================================
+# 10. MAKE ONE FANCY MIXED-TYPE HEATMAP PER COHORT
+# =============================================================================
+
+p_aibl <- plot_mixed_pair_heatmap(
+  AIBL_corr_df,
+  title = "AIBL: Mixed-Type Association Plot with CDR Change per Year"
+)
+
+p_nacc <- plot_mixed_pair_heatmap(
+  NACC_corr_df,
+  title = "NACC: Mixed-Type Association Plot with CDR Change per Year"
+)
+
+p_habs <- plot_mixed_pair_heatmap(
+  HABS_corr_df,
+  title = "HABS-HD: Mixed-Type Association Plot with CDR Change per Year"
+)
+
+# =============================================================================
+# 11. SAVE FIGURES
+# =============================================================================
+
+dir.create("../plots/heatmap", recursive = TRUE, showWarnings = FALSE)
+
+ggsave(
+  "../plots/heatmap/AIBL_mixed_pair_heatmap.png",
+  p_aibl,
+  width = 18,
+  height = 18,
+  dpi = 600,
+  bg = "white"
+)
+
+ggsave(
+  "../plots/heatmap/NACC_mixed_pair_heatmap.png",
+  p_nacc,
+  width = 18,
+  height = 18,
+  dpi = 600,
+  bg = "white"
+)
+
+ggsave(
+  "../plots/heatmap/HABS_mixed_pair_heatmap.png",
+  p_habs,
+  width = 18,
+  height = 18,
+  dpi = 600,
+  bg = "white"
+)
+```
+

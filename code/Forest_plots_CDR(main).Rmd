@@ -771,14 +771,14 @@ dt_t = make_dt_from_fits(
 ```
 
 ## Stratified Forest Plot (Gender, APOE4, Age)
-```{r forest-strat, fig.width=20, fig.height=15, dev="png", dpi=1200}
+```{r forest-strat, fig.width=20, fig.height=15, dev="png", dpi=600}
 # ── Save as PNG (avoids PDF Unicode issues with β, ×, –, etc.) ───────────────
 # ragg::agg_png() gives the best font rendering; falls back to plain png().
 png_path <- "../plots/forestplot/Figure 3.png"
 dir.create(dirname(png_path), recursive = TRUE, showWarnings = FALSE)
 
 # Width/height in pixels: inches × dpi
-img_w <- 10; img_h <- 15; img_dpi <- 900
+img_w <- 10; img_h <- 15; img_dpi <- 400
 
 if (requireNamespace("ragg", quietly = TRUE)){
   ragg::agg_png(png_path, width = img_w, height = img_h,
